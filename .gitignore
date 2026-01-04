@@ -1,0 +1,119 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Bytecode / compiled / optimized
+*.pyd
+*.pyo
+
+# =========================
+# Virtual environments (uv / venv)
+# =========================
+.venv/
+.venv_test/
+venv/
+ENV/
+env/
+
+# =========================
+# Environment variables / secrets
+# =========================
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# =========================
+# Packaging / build artifacts
+# =========================
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+wheelhouse/
+
+# PEP 582 (if someone uses it)
+__pypackages__/
+
+# =========================
+# Test / coverage / profiling
+# =========================
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pyre/
+.dmypy.json
+.prof
+.profraw
+
+# =========================
+# Type checkers / linters / formatters
+# =========================
+.mypy_cache/
+.ruff_cache/
+.pyright/
+.pytype/
+.pylint.d/
+
+# =========================
+# IDEs / editors
+# =========================
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# =========================
+# Jupyter / notebooks
+# =========================
+.ipynb_checkpoints/
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# =========================
+# MkDocs / docs build output
+# =========================
+site/
+
+# =========================
+# Logs
+# =========================
+*.log
+
+# =========================
+# Local caches / temp
+# =========================
+.cache/
+.tmp/
+tmp/
+*.tmp
+*.swp
+*.swo
+
+# =========================
+# Node (in case mkdocs-material or tooling pulls nodeenv)
+# =========================
+node_modules/
+
+# =========================
+# Local overrides
+# =========================
+*.local

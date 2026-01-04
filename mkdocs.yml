@@ -1,0 +1,27 @@
+site_name: SlimX
+repo_name: slimx-ai/slimx
+repo_url: https://github.com/slimx-ai/slimx
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.sections
+    - navigation.expand
+    - content.code.copy
+nav:
+  - Home: index.md
+  - Quickstart: quickstart.md
+  - Concepts:
+      - Vision & Design: concepts/vision.md
+      - Architecture: concepts/architecture.md
+      - High vs Low: concepts/high_vs_low.md
+      - Providers: concepts/providers.md
+      - Tools: concepts/tools.md
+      - Streaming: concepts/streaming.md
+      - Structured Output: concepts/structured_output.md
+      - Plugins: concepts/plugins.md
+  - API Reference:
+      - High-level: api/high.md
+      - Low-level: api/low.md
+      - Providers: api/providers.md
+  - Contributing: contributing.md
