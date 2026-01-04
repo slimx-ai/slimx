@@ -49,5 +49,5 @@ class AnthropicProvider(Provider):
         return Result(text=text, raw=data, usage=usage)
     def stream(self, req, *, tools: Sequence[ToolSpec]=()) -> Iterable[StreamEvent]:
         res=self.chat(req, tools=tools)
-        yield StreamEvent(type="message", text=res.text, raw=res.raw)
+        yield StreamEvent(type="text_delta", text=res.text, raw=res.raw)
         yield StreamEvent(type="done")

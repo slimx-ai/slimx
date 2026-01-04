@@ -53,5 +53,5 @@ class AnthropicAsyncProvider(Provider):
         return Result(text=text, raw=data, usage=usage)
     async def astream(self, req, *, tools: Sequence[ToolSpec]=()):
         res=await self.achat(req, tools=tools)
-        yield StreamEvent(type="message", text=res.text, raw=res.raw)
+        yield StreamEvent(type="text_delta", text=res.text, raw=res.raw)
         yield StreamEvent(type="done")

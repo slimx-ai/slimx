@@ -94,9 +94,10 @@ Desktop.ini
 site/
 
 # =========================
-# Logs
+# Logs and internal docs
 # =========================
 *.log
+internal_docs/
 
 # =========================
 # Local caches / temp

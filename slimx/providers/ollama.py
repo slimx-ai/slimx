@@ -42,5 +42,5 @@ class OllamaProvider(Provider):
                         break
                     chunk=(obj.get("message") or {}).get("content") or ""
                     if chunk:
-                        yield StreamEvent(type="token", text=chunk, raw=obj)
+                        yield StreamEvent(type="text_delta", text=chunk, raw=obj)
         yield StreamEvent(type="done")

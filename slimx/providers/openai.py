@@ -81,7 +81,7 @@ class OpenAIProvider(Provider):
                         continue
                     delta=obj["choices"][0].get("delta",{})
                     if delta.get("content"):
-                        yield StreamEvent(type="token", text=delta["content"], raw=obj)
+                        yield StreamEvent(type="text_delta", text=delta["content"], raw=obj)
                     for tc in delta.get("tool_calls") or []:
                         tc_id=str(tc.get("id") or tc.get("index"))
                         fn=tc.get("function") or {}
