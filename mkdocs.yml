@@ -1,4 +1,7 @@
 site_name: SlimX
+site_url: https://slimx-ai.github.io/slimx/
+site_description: "SlimX: A lightweight framework for building AI applications with high-level abstractions and modular components."
+site_author: SlimX Team
 repo_name: slimx-ai/slimx
 repo_url: https://github.com/slimx-ai/slimx
 theme:
