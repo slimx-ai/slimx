@@ -18,7 +18,7 @@ nav:
       - Vision & Design: concepts/vision.md
       - Architecture: concepts/architecture.md
       - High vs Low: concepts/high_vs_low.md
-      - Core Types: concepts/core_types.md
+      - Core Types: concepts/types.md
       - Providers: concepts/providers.md
       - Tools: concepts/tools.md
       - Streaming: concepts/streaming.md
