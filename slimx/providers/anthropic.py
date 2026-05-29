@@ -5,10 +5,11 @@ from typing import Any, Dict, Iterable, Sequence
 from ..types import Result, StreamEvent, Usage
 from ..tooling import ToolSpec
 from ..errors import ProviderError, ProviderAuthError, ProviderRateLimitError
-from .base import Provider
+from .base import Provider, ProviderCapabilities
 
 class AnthropicProvider(Provider):
     name="anthropic"
+    capabilities = ProviderCapabilities(streaming=False)
     def __init__(self, api_key: str, base_url: str="https://api.anthropic.com", version: str="2023-06-01"):
         self.api_key=api_key
         self.base_url=base_url.rstrip("/")
@@ -21,7 +22,7 @@ class AnthropicProvider(Provider):
         return cls(api_key, os.environ.get("ANTHROPIC_BASE_URL","https://api.anthropic.com"), os.environ.get("ANTHROPIC_VERSION","2023-06-01"))
     def _headers(self)->Dict[str,str]:
         return {"x-api-key":self.api_key,"anthropic-version":self.version,"content-type":"application/json"}
-    def chat(self, req, *, tools: Sequence[ToolSpec]=()):
+    def chat(self, req, *, tools: Sequence[ToolSpec]=(), timeout=None):
         sys=[]
         msgs=[]
         for m in req.messages:
@@ -35,7 +36,7 @@ class AnthropicProvider(Provider):
         if req.temperature is not None:
             payload["temperature"]=req.temperature
         url=f"{self.base_url}/v1/messages"
-        with httpx.Client(timeout=30.0) as c:
+        with httpx.Client(timeout=timeout or 30.0) as c:
             r=c.post(url, headers=self._headers(), json=payload)
         if r.status_code in (401,403):
             raise ProviderAuthError(r.text)
@@ -47,7 +48,7 @@ class AnthropicProvider(Provider):
         text="".join([b.get("text","") for b in (data.get("content") or []) if b.get("type")=="text"])
         usage=Usage(prompt_tokens=(data.get("usage") or {}).get("input_tokens"), completion_tokens=(data.get("usage") or {}).get("output_tokens"))
         return Result(text=text, raw=data, usage=usage)
-    def stream(self, req, *, tools: Sequence[ToolSpec]=()) -> Iterable[StreamEvent]:
-        res=self.chat(req, tools=tools)
+    def stream(self, req, *, tools: Sequence[ToolSpec]=(), timeout=None) -> Iterable[StreamEvent]:
+        res=self.chat(req, tools=tools, timeout=timeout)
         yield StreamEvent(type="text_delta", text=res.text, raw=res.raw)
         yield StreamEvent(type="done")

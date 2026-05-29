@@ -7,13 +7,14 @@ from ..types import Result, StreamEvent, ToolCall, Usage
 from ..tooling import ToolSpec
 from ..errors import ProviderError, ProviderAuthError, ProviderRateLimitError
 from ..utils.sse import iter_sse_data
-from .base import Provider
+from .base import Provider, ProviderCapabilities
 
 def _tools_payload(tools: Sequence[ToolSpec]):
     return [{"type":"function","function":{"name":t.name,"description":t.description,"parameters":t.parameters}} for t in tools]
 
 class OpenAIProvider(Provider):
     name="openai"
+    capabilities = ProviderCapabilities(tools=True, structured_output=True, streaming=True)
     def __init__(self, api_key: str, base_url: str="https://api.openai.com/v1"):
         self.api_key=api_key
         self.base_url=base_url.rstrip("/")
@@ -26,14 +27,14 @@ class OpenAIProvider(Provider):
         return cls(api_key, base_url)
     def _headers(self)->Dict[str,str]:
         return {"Authorization":f"Bearer {self.api_key}","Content-Type":"application/json"}
-    def chat(self, req, *, tools: Sequence[ToolSpec]=()):
+    def chat(self, req, *, tools: Sequence[ToolSpec]=(), timeout=None):
         payload=req.to_dict()
         if tools:
             payload["tools"]=_tools_payload(tools)
         if payload.get("response_format")=="json_object":
             payload["response_format"]={"type":"json_object"}
         url=f"{self.base_url}/chat/completions"
-        with httpx.Client(timeout=30.0) as c:
+        with httpx.Client(timeout=timeout or 30.0) as c:
             r=c.post(url, headers=self._headers(), json=payload)
         if r.status_code==401:
             raise ProviderAuthError(r.text)
@@ -55,7 +56,7 @@ class OpenAIProvider(Provider):
             tool_calls.append(ToolCall(id=tc.get("id",""), name=fn.get("name",""), arguments=args_obj))
         usage=Usage.from_openai(data.get("usage") or {})
         return Result(text=text, raw=data, usage=usage, tool_calls=tool_calls)
-    def stream(self, req, *, tools: Sequence[ToolSpec]=()) -> Iterable[StreamEvent]:
+    def stream(self, req, *, tools: Sequence[ToolSpec]=(), timeout=None) -> Iterable[StreamEvent]:
         payload=req.to_dict()
         if tools:
             payload["tools"]=_tools_payload(tools)
@@ -63,7 +64,7 @@ class OpenAIProvider(Provider):
             payload["response_format"]={"type":"json_object"}
         payload["stream"]=True
         url=f"{self.base_url}/chat/completions"
-        with httpx.Client(timeout=None) as c:
+        with httpx.Client(timeout=timeout) as c:
             with c.stream("POST", url, headers=self._headers(), json=payload) as r:
                 if r.status_code==401:
                     raise ProviderAuthError(r.text)
