@@ -8,6 +8,7 @@ Factories accept keyword overrides where possible:
 - Anthropic: api_key, base_url, version
 - Ollama: base_url
 - Google: api_key, base_url
+- OAI/OpenAI-compatible: api_key, base_url
 
 Async selection is controlled via `async_mode=True`.
 """
@@ -92,9 +93,34 @@ def google_factory(*, async_mode: bool = False, **kwargs: Any) -> Provider:
     return P(api_key=api_key, base_url=base_url)
 
 
+def oai_factory(*, async_mode: bool = False, **kwargs: Any) -> Provider:
+    api_key = (
+        kwargs.pop("api_key", None)
+        or os.environ.get("SLIMX_OAI_API_KEY")
+        or os.environ.get("OAI_API_KEY")
+        or "EMPTY"
+    )
+    base_url = (
+        kwargs.pop("base_url", None)
+        or os.environ.get("SLIMX_OAI_BASE_URL")
+        or os.environ.get("OAI_BASE_URL")
+    )
+
+    if not base_url:
+        raise ProviderAuthError("SLIMX_OAI_BASE_URL or OAI_BASE_URL is not set")
+
+    if async_mode:
+        from .oai_async import OAIAsyncProvider as P
+    else:
+        from .oai import OAIProvider as P
+
+    return P(api_key=api_key, base_url=base_url)
+
+
 DEFAULT_FACTORIES: Dict[str, ProviderFactory] = {
     "openai": openai_factory,
     "anthropic": anthropic_factory,
     "ollama": ollama_factory,
     "google": google_factory,
+    "oai": oai_factory,
 }
