@@ -247,7 +247,16 @@ def _function_call_part_from_slimx_tool_call(tool_call: dict[str, Any]) -> Optio
     if call_id:
         function_call["id"] = call_id
 
-    return {"functionCall": function_call}
+    part: dict[str, Any] = {"functionCall": function_call}
+
+    # Replay Gemini's required thought signature (captured into ToolCall.extra
+    # at parse time and carried through the tool loop as `extra`).
+    extra = tool_call.get("extra") or {}
+    signature = extra.get("thoughtSignature")
+    if signature:
+        part["thoughtSignature"] = signature
+
+    return part
 
 
 def _generation_config(
@@ -373,11 +382,20 @@ def _extract_tool_calls(data: Dict[str, Any]) -> list[ToolCall]:
         if not isinstance(args, dict):
             args = {}
 
+        # Gemini 3+ attaches a `thoughtSignature` to function-call parts that
+        # MUST be echoed back on the next turn, or the follow-up request fails
+        # with "Function call is missing a thought_signature". Carry it through
+        # the tool loop via ToolCall.extra. (Sibling of functionCall on the part;
+        # some payloads nest it inside functionCall instead.)
+        signature = part.get("thoughtSignature") or function_call.get("thoughtSignature")
+        extra = {"thoughtSignature": signature} if signature else {}
+
         calls.append(
             ToolCall(
                 id=str(call_id or ""),
                 name=str(name or ""),
                 arguments=args,
+                extra=extra,
             )
         )
 

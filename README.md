@@ -1,4 +1,4 @@
-# SlimX (`slimx`) — v0.7.1
+# SlimX (`slimx`) — v0.7.2
 
 SlimX is a tiny, inspectable LLM runtime for building vendor-neutral AI software across cloud and local models.
 

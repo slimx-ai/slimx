@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.7.2 (2026-06-03)
+
+### Fixed
+- **Gemini tool calling (3.x):** the Google provider now captures the
+  `thoughtSignature` that Gemini attaches to function-call parts and replays it on
+  the next turn. Previously the auto tool loop dropped it, so multi-step tool calls
+  against `gemini-3.x` failed with `400 ... Function call is missing a
+  thought_signature`. Carried generically through a new `ToolCall.extra` field, so
+  it round-trips through the Client tool loop and is only ever sent back to the
+  originating provider.
+
 ## v0.7.1 (2026-06-03)
 
 ### Added

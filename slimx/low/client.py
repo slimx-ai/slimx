@@ -115,8 +115,16 @@ class Client:
 
 
 def _tool_call_to_provider_dict(tc) -> dict:
-    return {
+    d = {
         "id": tc.id or tc.name,
         "type": "function",
         "function": {"name": tc.name, "arguments": tc.arguments_json},
     }
+    # Preserve provider-specific opaque data (e.g. Gemini thoughtSignature) so it
+    # can be replayed to the same provider on the next tool-loop turn. Only the
+    # originating provider reads it; OpenAI-shaped providers never see it because
+    # their own tool calls carry no `extra`.
+    extra = getattr(tc, "extra", None)
+    if extra:
+        d["extra"] = extra
+    return d

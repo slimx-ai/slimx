@@ -59,6 +59,8 @@ class ToolCall:
     - Stores:
         - arguments: Dict[str, Any]  (backwards compatible)
         - arguments_json: str        (canonical form for providers/streaming)
+        - extra: Dict[str, Any]      (provider-specific opaque data that must be
+          round-tripped back to the provider, e.g. Gemini `thoughtSignature`)
     """
     id: str
     name: str
@@ -68,6 +70,10 @@ class ToolCall:
 
     # Canonical representation (useful for streaming and cross-provider consistency)
     arguments_json: str = "{}"
+
+    # Provider-specific opaque metadata that must survive the tool loop and be
+    # replayed to the same provider (e.g. Gemini's required `thoughtSignature`).
+    extra: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         # Allow callers to pass a JSON string by stuffing it into arguments

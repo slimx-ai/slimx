@@ -5,8 +5,9 @@ from dataclasses import dataclass
 from fakes import FakeProvider
 from slimx import Message, tool
 from slimx.low import ChatRequest, Client
-from slimx.providers.base import ProviderCapabilities
+from slimx.providers.base import Provider, ProviderCapabilities
 from slimx.schema import parse_json
+from slimx.types import Result, StreamEvent, ToolCall
 
 
 @tool
@@ -53,6 +54,47 @@ def test_auto_tool_loop_preserves_assistant_tool_call_message():
     assert provider.calls[1].messages[-2].tool_calls[0]["function"]["name"] == "add"
     assert provider.calls[1].messages[-1].role == "tool"
     assert res.trace["tool_steps"] == 1
+
+
+def test_tool_loop_preserves_toolcall_extra():
+    # Provider-specific opaque data (e.g. Gemini thoughtSignature) must survive
+    # the auto tool loop so it can be replayed to the same provider.
+    class ExtraProvider(Provider):
+        name = "extra"
+        capabilities = ProviderCapabilities(tools=True)
+
+        def __init__(self):
+            self.calls: list = []
+
+        def chat(self, req, *, tools=(), timeout=None):
+            self.calls.append(req)
+            if len(self.calls) == 1:
+                return Result(
+                    text="",
+                    tool_calls=[
+                        ToolCall(
+                            id="c1",
+                            name="add",
+                            arguments={"a": 2, "b": 3},
+                            extra={"thoughtSignature": "SIG"},
+                        )
+                    ],
+                )
+            return Result(text="done")
+
+        def stream(self, req, *, tools=(), timeout=None):
+            yield StreamEvent.done()
+
+    provider = ExtraProvider()
+    res = Client(provider).chat(
+        ChatRequest(model="m", messages=[Message.user("2+3?")]),
+        tools=[add],
+        tool_runtime="auto",
+    )
+
+    assert res.text == "done"
+    assistant_msg = provider.calls[1].messages[-2]
+    assert assistant_msg.tool_calls[0]["extra"] == {"thoughtSignature": "SIG"}
 
 
 def test_retry_succeeds_and_trace_is_backward_compatible():

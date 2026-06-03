@@ -323,6 +323,68 @@ def test_google_maps_slimx_tool_loop_messages_to_function_response(monkeypatch):
     assert tool_turn["parts"][0]["functionResponse"]["response"]["result"] == 5
 
 
+def test_google_round_trips_thought_signature(monkeypatch):
+    # Gemini 3+ requires the functionCall's thoughtSignature to be echoed back,
+    # or the follow-up request fails with "missing a thought_signature".
+    class SigClient(FakeClient):
+        def post(self, url, *, headers, json):
+            captured["url"] = url
+            captured["json"] = json
+            return FakeResponse(
+                data={
+                    "candidates": [
+                        {
+                            "content": {
+                                "parts": [
+                                    {
+                                        "functionCall": {"name": "add", "args": {"a": 2, "b": 3}},
+                                        "thoughtSignature": "SIG-abc",
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            )
+
+    monkeypatch.setattr("slimx.providers.google.httpx.Client", SigClient)
+    provider = GoogleProvider(api_key="test-key")
+
+    # 1) Parse: the signature is captured into ToolCall.extra.
+    res = provider.chat(
+        ChatRequest(model="gemini-3.5-flash", messages=[Message.user("2+3?")]),
+        tools=[add],
+    )
+    assert res.tool_calls[0].extra["thoughtSignature"] == "SIG-abc"
+
+    # 2) Replay: an assistant tool-call carrying `extra` puts the signature back
+    #    onto the Gemini functionCall part.
+    provider.chat(
+        ChatRequest(
+            model="gemini-3.5-flash",
+            messages=[
+                Message.user("2+3?"),
+                Message.assistant(
+                    "",
+                    tool_calls=[
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {"name": "add", "arguments": '{"a":2,"b":3}'},
+                            "extra": {"thoughtSignature": "SIG-abc"},
+                        }
+                    ],
+                ),
+                Message.tool("5", tool_call_id="call_1"),
+            ],
+        ),
+        tools=[add],
+    )
+    model_turn = captured["json"]["contents"][1]
+    assert model_turn["parts"][0]["functionCall"]["name"] == "add"
+    assert model_turn["parts"][0]["thoughtSignature"] == "SIG-abc"
+
+
 def test_google_stream_emits_text_delta_and_done(monkeypatch):
     monkeypatch.setattr("slimx.providers.google.httpx.Client", FakeClient)
 
