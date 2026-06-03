@@ -19,3 +19,7 @@
 - Added Google provider tests with fake HTTP clients.
 - Added Google Gemini quickstart example.
 - Updated provider documentation to include Google Gemini.
+
+## v0.5.0 (2026-06-03)
+
+- Fix Ollama provider code–read Ollama error before raising. 
