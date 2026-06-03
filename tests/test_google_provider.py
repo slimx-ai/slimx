@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import pytest
 
 from slimx import Message, tool
@@ -370,15 +371,16 @@ def test_google_error_mapping(monkeypatch, status_code, error_type):
         )
 
 
-@pytest.mark.asyncio
-async def test_google_async_chat(monkeypatch):
+def test_google_async_chat(monkeypatch):
     monkeypatch.setattr("slimx.providers.google_async.httpx.AsyncClient", AsyncFakeClient)
 
     provider = GoogleAsyncProvider(api_key="test-key")
-    result = await provider.achat(
-        ChatRequest(
-            model="gemini-3.5-flash",
-            messages=[Message.user("Hi")],
+    result = asyncio.run(
+        provider.achat(
+            ChatRequest(
+                model="gemini-3.5-flash",
+                messages=[Message.user("Hi")],
+            )
         )
     )
 
@@ -388,20 +390,24 @@ async def test_google_async_chat(monkeypatch):
     assert result.usage.total_tokens == 5
 
 
-@pytest.mark.asyncio
-async def test_google_async_stream(monkeypatch):
+def test_google_async_stream(monkeypatch):
     monkeypatch.setattr("slimx.providers.google_async.httpx.AsyncClient", AsyncFakeClient)
 
-    provider = GoogleAsyncProvider(api_key="test-key")
-    events = []
+    async def collect_events():
+        provider = GoogleAsyncProvider(api_key="test-key")
+        events = []
 
-    async for event in provider.astream(
-        ChatRequest(
-            model="gemini-3.5-flash",
-            messages=[Message.user("Hi")],
-        )
-    ):
-        events.append(event)
+        async for event in provider.astream(
+            ChatRequest(
+                model="gemini-3.5-flash",
+                messages=[Message.user("Hi")],
+            )
+        ):
+            events.append(event)
+
+        return events
+
+    events = asyncio.run(collect_events())
 
     assert [event.type for event in events] == ["text_delta", "text_delta", "done"]
     assert "".join(event.text or "" for event in events) == "Async"
