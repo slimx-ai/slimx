@@ -1,4 +1,4 @@
-# SlimX (`slimx`) — v0.7.0
+# SlimX (`slimx`) — v0.7.1
 
 SlimX is a tiny, inspectable LLM runtime for building vendor-neutral AI software across cloud and local models.
 
@@ -59,6 +59,28 @@ uv run pytest -q
 | Google Gemini |    `google:` | `GOOGLE_API_KEY` or `GEMINI_API_KEY` | Supports chat, streaming, JSON output, and tools |
 | Anthropic     | `anthropic:` | `ANTHROPIC_API_KEY`                  | Claude Messages API; supports chat, JSON output, and tools |
 | Ollama        |    `ollama:` | optional `OLLAMA_BASE_URL`           | Local models through Ollama                      |
+
+---
+
+## Inspect provider capabilities
+
+Check what a provider supports before runtime — no API key or running server required:
+
+```python
+from slimx.providers import describe_provider
+
+describe_provider("google")
+# {'name': 'google', 'native': True, 'tools': True, 'structured_output': True,
+#  'streaming': True, 'async_chat': False, 'async_streaming': False}
+
+from slimx import llm
+llm("openai:gpt-4.1-nano").capabilities.tools  # True
+```
+
+Every provider is checked against a shared conformance suite (`tests/conformance/`),
+so declared capabilities always match real behavior. See
+[docs: Provider Capabilities](docs/concepts/provider-capabilities.md) and
+[docs: OpenAI-compatible servers](docs/concepts/openai-compatible.md).
 
 ---
 

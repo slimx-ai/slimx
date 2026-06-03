@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.7.1 (2026-06-03)
+
+### Added
+- **Provider conformance suite** (`tests/conformance/`): a reusable set of
+  contract checks plus a reference `FakeConformantProvider`, run against every
+  built-in provider fully offline via `httpx.MockTransport` (sync + async). This
+  is the mechanism that guarantees every provider behaves identically; third-party
+  plugins can reuse the same checks to claim conformance.
+- **Capability introspection**: `slimx.providers.describe_provider(name,
+  async_mode=False)` reports a provider's declared capabilities with no API key
+  or running server required; `Model.capabilities` / `AsyncModel.capabilities`
+  expose the selected provider's `ProviderCapabilities`.
+- Provider documentation: a full `concepts/providers.md` (native vs
+  OpenAI-compatible), a new `concepts/openai-compatible.md` (vLLM, llama.cpp,
+  LM Studio, Ollama `/v1` recipes + troubleshooting), and runnable
+  `examples/oai_{vllm,llamacpp,lmstudio,ollama_v1}.py`.
+
+### Changed
+- Corrected the provider-capabilities docs to reflect Anthropic tool support and
+  its streaming wrapper. Test suite 57 -> 74.
+
 ## v0.7.0 (2026-06-03)
 
 ### Fixed

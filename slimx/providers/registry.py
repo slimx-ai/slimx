@@ -34,3 +34,33 @@ def get_provider(name: str, **kwargs: Any) -> Provider:
     if name not in _REGISTRY:
         raise KeyError(f"Unknown provider '{name}'. Available: {list_providers()}")
     return _REGISTRY[name](**kwargs)
+
+
+def describe_provider(name: str, *, async_mode: bool = False) -> Dict[str, Any]:
+    """Return a provider's declared capabilities without making any network call.
+
+    Constructs a throwaway provider instance with placeholder credentials purely
+    to read its class-level ``capabilities``, so introspection never requires API
+    keys or a running server.
+
+    Example:
+        >>> describe_provider("google")
+        {'name': 'google', 'native': True, 'tools': True, 'structured_output': True,
+         'streaming': True, 'async_chat': False, 'async_streaming': False}
+    """
+    provider = get_provider(
+        name,
+        async_mode=async_mode,
+        api_key="__introspect__",
+        base_url="http://localhost",
+    )
+    caps = provider.capabilities
+    return {
+        "name": provider.name,
+        "native": name != "oai",
+        "tools": caps.tools,
+        "structured_output": caps.structured_output,
+        "streaming": caps.streaming,
+        "async_chat": caps.async_chat,
+        "async_streaming": caps.async_streaming,
+    }

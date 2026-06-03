@@ -8,6 +8,13 @@ Defaults are registered lazily in `slimx.providers.registry` when you call
 """
 
 from .base import ProviderCapabilities
-from .registry import get_provider, list_providers, load_plugins, register
+from .registry import describe_provider, get_provider, list_providers, load_plugins, register
 
-__all__ = ["register", "get_provider", "load_plugins", "list_providers", "ProviderCapabilities"]
+__all__ = [
+    "register",
+    "get_provider",
+    "describe_provider",
+    "load_plugins",
+    "list_providers",
+    "ProviderCapabilities",
+]

@@ -37,6 +37,11 @@ class Model:
         self._tools = list(tools or [])
         self._tool_runtime = tool_runtime
 
+    @property
+    def capabilities(self):
+        """The selected provider's declared capabilities (`ProviderCapabilities`)."""
+        return self._client.provider.capabilities
+
     def __call__(self, prompt: str, **overrides: Any) -> Result:
         req = ChatRequest(
             model=self._model,
@@ -98,6 +103,11 @@ class AsyncModel:
         self._max_tokens = max_tokens
         self._tools = list(tools or [])
         self._tool_runtime = tool_runtime
+
+    @property
+    def capabilities(self):
+        """The selected provider's declared capabilities (`ProviderCapabilities`)."""
+        return self._client.provider.capabilities
 
     async def __call__(self, prompt: str, **overrides: Any) -> Result:
         req = ChatRequest(

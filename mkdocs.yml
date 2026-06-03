@@ -20,6 +20,7 @@ nav:
       - High vs Low: concepts/high_vs_low.md
       - Core Types: concepts/types.md
       - Providers: concepts/providers.md
+      - OpenAI-compatible Servers: concepts/openai-compatible.md
       - Provider-neutral Calls: concepts/provider-neutral-calls.md
       - Provider Capabilities: concepts/provider-capabilities.md
       - Tools: concepts/tools.md
