@@ -7,6 +7,7 @@ Factories accept keyword overrides where possible:
 - OpenAI: api_key, base_url
 - Anthropic: api_key, base_url, version
 - Ollama: base_url
+- Google: api_key, base_url
 
 Async selection is controlled via `async_mode=True`.
 """
@@ -70,8 +71,30 @@ def ollama_factory(*, async_mode: bool = False, **kwargs: Any) -> Provider:
     return P(base_url=base_url)
 
 
+def google_factory(*, async_mode: bool = False, **kwargs: Any) -> Provider:
+    api_key = (
+        kwargs.pop("api_key", None)
+        or os.environ.get("GOOGLE_API_KEY")
+        or os.environ.get("GEMINI_API_KEY")
+    )
+    base_url = kwargs.pop("base_url", None) or os.environ.get(
+        "GOOGLE_BASE_URL", "https://generativelanguage.googleapis.com/v1beta"
+    )
+
+    if async_mode:
+        from .google_async import GoogleAsyncProvider as P
+    else:
+        from .google import GoogleProvider as P
+
+    if not api_key:
+        raise ProviderAuthError("GOOGLE_API_KEY or GEMINI_API_KEY is not set")
+
+    return P(api_key=api_key, base_url=base_url)
+
+
 DEFAULT_FACTORIES: Dict[str, ProviderFactory] = {
     "openai": openai_factory,
     "anthropic": anthropic_factory,
     "ollama": ollama_factory,
+    "google": google_factory,
 }

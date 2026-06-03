@@ -7,7 +7,7 @@ It is intentionally designed around **two clearly separated APIs**:
 - **High-level API** (`slimx`) — “1‑minute productivity”: `llm(...)`, `.stream(...)`, `.json(...)`, tools, retries.
 - **Low-level API** (`slimx.low`) — “systems builder primitives”: explicit `Client`, `ChatRequest`, `Message`, provider registry, middleware.
 
-SlimX also supports **multiple providers** (OpenAI, Anthropic, Ollama) and **provider plugins** (3rd-party providers without modifying core).
+SlimX also supports **multiple providers** (OpenAI, Anthropic, Ollama, Google) and **provider plugins**. (3rd-party providers without modifying core).
 
 ---
 
@@ -45,6 +45,17 @@ export OPENAI_API_KEY="..."
 export OPENAI_BASE_URL="https://api.openai.com/v1"
 ```
 
+### Google Gemini
+
+```bash
+export GOOGLE_API_KEY="..."
+# or:
+export GEMINI_API_KEY="..."
+
+# optional:
+export GOOGLE_BASE_URL="https://generativelanguage.googleapis.com/v1beta"
+```
+
 ### Anthropic
 ```bash
 export ANTHROPIC_API_KEY="..."
@@ -66,6 +77,14 @@ export OLLAMA_BASE_URL="http://localhost:11434"
 from slimx import llm
 m = llm("openai:gpt-4.1-nano", temperature=0.2)
 res = m("Write a haiku about fog and streetlights.")
+print(res.text)
+```
+
+```python
+from slimx import llm
+
+m = llm("google:gemini-3.5-flash", temperature=0.2)
+res = m("Write a haiku about small, inspectable AI software.")
 print(res.text)
 ```
 
