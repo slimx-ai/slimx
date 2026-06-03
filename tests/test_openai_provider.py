@@ -81,6 +81,7 @@ def test_streaming_reassembles_split_tool_call(monkeypatch):
     tool_events = [e for e in events if e.type == "tool_call"]
     assert len(tool_events) == 1
     call = tool_events[0].tool_call
+    assert call is not None
     assert call.id == "call_abc"
     assert call.name == "add"
     assert call.arguments == {"a": 2, "b": 3}
