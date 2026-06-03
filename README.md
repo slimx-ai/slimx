@@ -2,43 +2,68 @@
 
 SlimX is a **slim, intuitive, lightweight** Python library for calling LLMs and building LLM systems.
 
-It is intentionally designed around **two clearly separated APIs**:
+It is designed around **two clearly separated APIs**:
 
-- **High-level API** (`slimx`) — “1‑minute productivity”: `llm(...)`, `.stream(...)`, `.json(...)`, tools, retries.
-- **Low-level API** (`slimx.low`) — “systems builder primitives”: explicit `Client`, `ChatRequest`, `Message`, provider registry, middleware.
+* **High-level API** (`slimx`) — “1-minute productivity”: `llm(...)`, `.stream(...)`, `.json(...)`, tools, retries.
+* **Low-level API** (`slimx.low`) — “systems builder primitives”: explicit `Client`, `ChatRequest`, `Message`, provider registry, middleware.
 
-SlimX also supports **multiple providers** (OpenAI, Anthropic, Ollama, Google) and **provider plugins** (3rd-party providers without modifying core).
+SlimX supports **multiple providers** — OpenAI, Anthropic, Ollama, and Google Gemini — plus **provider plugins** for third-party providers without modifying core.
 
 ---
 
-## Install (using `uv`)
+## Install
 
-On Debian/Ubuntu you may hit `externally-managed-environment` (PEP 668) if you try to use system `pip`.
-Use **uv**, which manages an isolated environment cleanly.
+### For users
 
-### Option A — contributors / repo setup (recommended)
+Create a new project and install SlimX:
+
+```bash
+uv init my-project
+cd my-project
+uv add slimx
+```
+
+Run Python through `uv` so it uses the project virtual environment:
+
+```bash
+uv run python
+```
+
+Or install with pip:
+
+```bash
+pip install slimx
+```
+
+### For contributors
+
 ```bash
 git clone https://github.com/slimx-ai/slimx.git
 cd slimx
 uv sync --all-extras
+uv run pytest -q
 ```
 
-### Option B — quick test from an extracted zip
-```bash
-unzip slimx_v0_4.zip
-cd slimx_v0_4
-uv sync --all-extras
-uv run python examples/quickstart_openai.py
-```
+> `uv sync` reads `pyproject.toml` and `uv.lock` when present.
+> Keeping `uv.lock` committed helps contributors and CI use a reproducible development environment.
 
-> `uv sync` reads `pyproject.toml` and (optionally) `uv.lock`.
-> If `uv.lock` is present and committed, installs are reproducible.
+---
+
+## Supported providers
+
+| Provider      |       Prefix | Environment variable                 | Notes                                            |
+| ------------- | -----------: | ------------------------------------ | ------------------------------------------------ |
+| OpenAI        |    `openai:` | `OPENAI_API_KEY`                     | Default provider when no prefix is given         |
+| Google Gemini |    `google:` | `GOOGLE_API_KEY` or `GEMINI_API_KEY` | Supports chat, streaming, JSON output, and tools |
+| Anthropic     | `anthropic:` | `ANTHROPIC_API_KEY`                  | Claude-compatible API                            |
+| Ollama        |    `ollama:` | optional `OLLAMA_BASE_URL`           | Local models through Ollama                      |
 
 ---
 
 ## Configure providers
 
 ### OpenAI
+
 ```bash
 export OPENAI_API_KEY="..."
 # optional:
@@ -57,6 +82,7 @@ export GOOGLE_BASE_URL="https://generativelanguage.googleapis.com/v1beta"
 ```
 
 ### Anthropic
+
 ```bash
 export ANTHROPIC_API_KEY="..."
 # optional:
@@ -64,75 +90,299 @@ export ANTHROPIC_BASE_URL="https://api.anthropic.com"
 export ANTHROPIC_VERSION="2023-06-01"
 ```
 
-### Ollama (local)
+### Ollama local models
+
 ```bash
 export OLLAMA_BASE_URL="http://localhost:11434"
 ```
 
+For Ollama, make sure the server is running and the model is available:
+
+```bash
+ollama serve
+```
+
+In another terminal:
+
+```bash
+ollama pull llama3.2:3b
+ollama list
+```
+
 ---
 
-## Quickstart (high-level)
+## Quickstart
+
+### OpenAI
 
 ```python
 from slimx import llm
+
 m = llm("openai:gpt-4.1-nano", temperature=0.2)
 res = m("Write a haiku about fog and streetlights.")
+
 print(res.text)
 ```
+
+### Google Gemini
 
 ```python
 from slimx import llm
 
 m = llm("google:gemini-3.5-flash", temperature=0.2)
 res = m("Write a haiku about small, inspectable AI software.")
+
 print(res.text)
 ```
 
-Streaming:
+### Ollama local model
 
 ```python
+from slimx import llm
+
+m = llm("ollama:llama3.2:3b", temperature=0.2, timeout=120)
+res = m("Explain why small libraries are easier to inspect.")
+
+print(res.text)
+```
+
+## Response structure
+
+Calling a SlimX model returns a `Result` object.
+
+```python
+from slimx import llm
+
+m = llm("ollama:llama3.2:3b", timeout=120)
+res = m("Explain why small libraries are easier to inspect.")
+
+print(res.text)
+```
+
+A `Result` contains:
+
+```python
+Result(
+    text="...",          # Normalized assistant text
+    raw={...},           # Raw provider response
+    usage=Usage(...),    # Token usage when available
+    tool_calls=[],       # Tool/function calls requested by the model
+    data=None,           # Parsed structured output, used by .json(...)
+    trace={...},         # Runtime metadata: provider, model, latency, retries, tools
+)
+```
+
+Most applications should use:
+
+```python
+print(res.text)
+```
+
+Use `res.raw` when you need provider-specific details, and `res.trace` when you want runtime diagnostics such as provider name, model name, elapsed time, retries, and tool-call count.
+
+---
+
+
+## Response structure
+
+Calling a SlimX model returns a `Result` object.
+
+```python
+from slimx import llm
+
+m = llm("ollama:llama3.2:3b", timeout=120)
+res = m("Explain why small libraries are easier to inspect.")
+
+print(res.text)
+```
+
+A `Result` contains:
+
+```python
+Result(
+    text="...",          # Normalized assistant text
+    raw={...},           # Raw provider response
+    usage=Usage(...),    # Token usage when available
+    tool_calls=[],       # Tool/function calls requested by the model
+    data=None,           # Parsed structured output, used by .json(...)
+    trace={...},         # Runtime metadata: provider, model, latency, retries, tools
+)
+```
+
+Most applications should use:
+
+```python
+print(res.text)
+```
+
+Use `res.raw` when you need provider-specific details, and `res.trace` when you want runtime diagnostics such as provider name, model name, elapsed time, retries, and tool-call count.
+
+
+
+## Streaming
+
+```python
+from slimx import llm
+
+m = llm("google:gemini-3.5-flash", temperature=0.2)
+
 for ev in m.stream("Tell a short story in 5 lines."):
     if ev.type == "text_delta":
         print(ev.text, end="", flush=True)
+
 print()
 ```
 
-Tools (auto-loop):
+---
+
+## Tools
+
+SlimX tools are provider-neutral. The same `@tool` interface can be used across providers that support tool/function calling.
 
 ```python
 from slimx import llm, tool
+
 
 @tool
 def add(a: int, b: int) -> int:
     "Add two integers."
     return a + b
 
-m = llm("openai:gpt-4.1-nano", tools=[add], tool_runtime="auto")
-print(m("What is 12 + 30?").text)
+
+m = llm("google:gemini-3.5-flash", tools=[add], tool_runtime="auto")
+res = m("What is 12 + 30?")
+
+print(res.text)
 ```
 
-Structured output:
+---
+
+## Structured output
+
+SlimX can parse structured JSON output into a dataclass.
 
 ```python
 from dataclasses import dataclass
+
 from slimx import llm
+
 
 @dataclass
 class City:
     name: str
     country: str
 
-m = llm("openai:gpt-4.1-nano")
+
+m = llm("google:gemini-3.5-flash")
 res = m.json("Paris is in France.", schema=City)
+
 print(res.data)
+```
+
+---
+
+## Low-level API
+
+Use the low-level API when you want explicit control over messages, requests, clients, and providers.
+
+```python
+from slimx import Message
+from slimx.low import ChatRequest, Client
+from slimx.providers import get_provider
+
+provider = get_provider("google")
+client = Client(provider, timeout=30, retries=2)
+
+req = ChatRequest(
+    model="gemini-3.5-flash",
+    messages=[Message.user("Explain provider-neutral LLM clients in one paragraph.")],
+    temperature=0.2,
+)
+
+res = client.chat(req)
+
+print(res.text)
+print(res.trace)
+```
+
+---
+
+## Provider plugins
+
+SlimX supports third-party provider plugins through the `slimx.providers` entry point group.
+
+Built-in providers are registered lazily, so importing `slimx` does not load provider modules or require API keys.
+
+---
+
+## Troubleshooting
+
+### `ModuleNotFoundError: No module named 'slimx'`
+
+If you installed with `uv add slimx`, run Python through uv:
+
+```bash
+uv run python
+```
+
+Or activate the virtual environment first:
+
+```bash
+source .venv/bin/activate
+python
+```
+
+### Ollama model not found
+
+Check which models are installed:
+
+```bash
+ollama list
+```
+
+Pull a model before using it:
+
+```bash
+ollama pull llama3.2:3b
+```
+
+Then use the exact model name:
+
+```python
+m = llm("ollama:llama3.2:3b", timeout=120)
+```
+
+### Ollama server not running
+
+Start Ollama:
+
+```bash
+ollama serve
+```
+
+Then retry your SlimX script.
+
+---
+
+## Development
+
+Run the full validation suite before opening a pull request or tagging a release:
+
+```bash
+uv sync --all-extras
+uv run ruff check .
+uv run pyright
+uv run pytest -q
+uv run python -m build
 ```
 
 ---
 
 ## Repo automation
 
-This bundle includes GitHub Actions:
-- CI (`.github/workflows/ci.yml`)
-- Docs deploy to GitHub Pages (`docs.yml`)
+This repository includes GitHub Actions for:
 
-See `README.md` and `docs/` for details.
+* CI (`.github/workflows/ci.yml`)
+* Docs deployment to GitHub Pages (`docs.yml`)
+
+See `docs/` for more detailed documentation.
