@@ -1,4 +1,4 @@
-# SlimX (`slimx`) — v0.4.1
+# SlimX (`slimx`) — v0.5.0
 
 SlimX is a **slim, intuitive, lightweight** Python library for calling LLMs and building LLM systems.
 
@@ -7,7 +7,7 @@ It is intentionally designed around **two clearly separated APIs**:
 - **High-level API** (`slimx`) — “1‑minute productivity”: `llm(...)`, `.stream(...)`, `.json(...)`, tools, retries.
 - **Low-level API** (`slimx.low`) — “systems builder primitives”: explicit `Client`, `ChatRequest`, `Message`, provider registry, middleware.
 
-SlimX also supports **multiple providers** (OpenAI, Anthropic, Ollama, Google) and **provider plugins**. (3rd-party providers without modifying core).
+SlimX also supports **multiple providers** (OpenAI, Anthropic, Ollama, Google) and **provider plugins** (3rd-party providers without modifying core).
 
 ---
 
