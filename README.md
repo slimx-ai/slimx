@@ -45,7 +45,8 @@ uv run pytest -q
 ```
 
 > `uv sync` reads `pyproject.toml` and `uv.lock` when present.
-> Keeping `uv.lock` committed helps contributors and CI use a reproducible development environment.
+
+> `uv.lock` is committed to help contributors reproducible the development environment.
 
 ---
 
@@ -54,6 +55,7 @@ uv run pytest -q
 | Provider      |       Prefix | Environment variable                 | Notes                                            |
 | ------------- | -----------: | ------------------------------------ | ------------------------------------------------ |
 | OpenAI        |    `openai:` | `OPENAI_API_KEY`                     | Default provider when no prefix is given         |
+| OpenAI-compatible | `oai:` | OpenAI-compatible `/v1/chat/completions` API | vLLM, LM Studio, llama.cpp server, LocalAI, Ollama `/v1`, internal gateways |
 | Google Gemini |    `google:` | `GOOGLE_API_KEY` or `GEMINI_API_KEY` | Supports chat, streaming, JSON output, and tools |
 | Anthropic     | `anthropic:` | `ANTHROPIC_API_KEY`                  | Claude-compatible API                            |
 | Ollama        |    `ollama:` | optional `OLLAMA_BASE_URL`           | Local models through Ollama                      |
@@ -69,6 +71,16 @@ export OPENAI_API_KEY="..."
 # optional:
 export OPENAI_BASE_URL="https://api.openai.com/v1"
 ```
+
+### OpenAI-compatible servers
+
+Use `oai:` for local or self-hosted servers that expose an OpenAI-compatible `/v1/chat/completions` API.
+
+```bash
+export SLIMX_OAI_BASE_URL="http://localhost:8000/v1"
+export SLIMX_OAI_API_KEY="EMPTY"
+```
+`SLIMX_OAI_API_KEY` can be a real key for authenticated gateways, or EMPTY for local servers that ignore authentication.
 
 ### Google Gemini
 
@@ -124,6 +136,26 @@ res = m("Write a haiku about fog and streetlights.")
 print(res.text)
 ```
 
+
+### OpenAI-compatible local/self-hosted server
+
+```python
+from slimx import llm
+
+m = llm(
+    "oai:Qwen/Qwen2.5-7B-Instruct",
+    provider_kwargs={
+        "base_url": "http://localhost:8000/v1",
+        "api_key": "EMPTY",
+    },
+    timeout=120,
+)
+
+res = m("Explain why compatibility APIs are useful for local model serving.")
+
+print(res.text)
+```
+
 ### Google Gemini
 
 ```python
@@ -146,43 +178,8 @@ res = m("Explain why small libraries are easier to inspect.")
 print(res.text)
 ```
 
-## Response structure
-
-Calling a SlimX model returns a `Result` object.
-
-```python
-from slimx import llm
-
-m = llm("ollama:llama3.2:3b", timeout=120)
-res = m("Explain why small libraries are easier to inspect.")
-
-print(res.text)
-```
-
-A `Result` contains:
-
-```python
-Result(
-    text="...",          # Normalized assistant text
-    raw={...},           # Raw provider response
-    usage=Usage(...),    # Token usage when available
-    tool_calls=[],       # Tool/function calls requested by the model
-    data=None,           # Parsed structured output, used by .json(...)
-    trace={...},         # Runtime metadata: provider, model, latency, retries, tools
-)
-```
-
-Most applications should use:
-
-```python
-print(res.text)
-```
-
-Use `res.raw` when you need provider-specific details, and `res.trace` when you want runtime diagnostics such as provider name, model name, elapsed time, retries, and tool-call count.
-
 ---
 
-
 ## Response structure
 
 Calling a SlimX model returns a `Result` object.
@@ -216,7 +213,6 @@ print(res.text)
 ```
 
 Use `res.raw` when you need provider-specific details, and `res.trace` when you want runtime diagnostics such as provider name, model name, elapsed time, retries, and tool-call count.
-
 
 
 ## Streaming

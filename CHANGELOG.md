@@ -23,3 +23,13 @@
 ## v0.5.1 (2026-06-03)
 
 - Fix Ollama provider code–read Ollama error before raising. 
+
+
+## v0.6.0
+
+- Added `oai:` provider for OpenAI-compatible `/v1/chat/completions` servers.
+- Added sync and async OAI provider wrappers.
+- Added OAI provider registration through the built-in provider registry.
+- Added OAI tests for registration, environment variables, provider kwargs, and Chat Completions payloads.
+- Added OAI quickstart example.
+- Updated README with native vs OpenAI-compatible provider guidance.
