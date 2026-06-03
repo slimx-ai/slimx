@@ -4,7 +4,7 @@ from typing import Iterable, Optional, Sequence
 from ..messages import Message
 from ..types import Result, StreamEvent
 from ..tooling import ToolSpec, execute_tool
-from ..utils.retry import retry
+from ..utils.retry import retry, async_retry
 from ..providers.base import Provider
 from .types import ChatRequest
 
@@ -57,18 +57,10 @@ class Client:
 
     async def achat(self, req: ChatRequest, *, tools: Sequence[ToolSpec]=(), tool_runtime: str="none", max_steps: int=6) -> Result:
         started = time.perf_counter()
-        # async retry
-        last = None
-        for i in range(self.retries + 1):
-            try:
-                res = await self.provider.achat(req, tools=tools, timeout=self.timeout)
-                break
-            except Exception as e:
-                last = e
-                if i >= self.retries:
-                    raise
-        else:
-            raise last  # type: ignore[misc]
+        res = await async_retry(
+            lambda: self.provider.achat(req, tools=tools, timeout=self.timeout),
+            retries=self.retries,
+        )
 
         tool_map = {t.name: t for t in tools}
         if tool_runtime != "auto" or not res.tool_calls or not tool_map:
@@ -96,17 +88,10 @@ class Client:
                 extra=req.extra,
             )
 
-            last = None
-            for i in range(self.retries + 1):
-                try:
-                    res = await self.provider.achat(req, tools=tools, timeout=self.timeout)
-                    break
-                except Exception as e:
-                    last = e
-                    if i >= self.retries:
-                        raise
-            else:
-                raise last  # type: ignore[misc]
+            res = await async_retry(
+                lambda: self.provider.achat(req, tools=tools, timeout=self.timeout),
+                retries=self.retries,
+            )
 
             if not res.tool_calls:
                 break

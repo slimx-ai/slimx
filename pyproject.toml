@@ -1,6 +1,6 @@
 [project]
 name = "slimx"
-version = "0.6.0"
+version = "0.7.0"
 description = "A slim, intuitive, lightweight Python library for calling LLMs (high-level + low-level) with multi-provider support."
 readme = "README.md"
 requires-python = ">=3.10"

@@ -1,4 +1,4 @@
-# SlimX (`slimx`) — v0.6.0
+# SlimX (`slimx`) — v0.7.0
 
 SlimX is a tiny, inspectable LLM runtime for building vendor-neutral AI software across cloud and local models.
 
@@ -46,7 +46,7 @@ uv run pytest -q
 
 > `uv sync` reads `pyproject.toml` and `uv.lock` when present.
 
-> `uv.lock` is committed to help contributors reproducible the development environment.
+> `uv.lock` is committed to help contributors reproduce the development environment.
 
 ---
 
@@ -57,7 +57,7 @@ uv run pytest -q
 | OpenAI        |    `openai:` | `OPENAI_API_KEY`                     | Default provider when no prefix is given         |
 | OpenAI-compatible | `oai:` | OpenAI-compatible `/v1/chat/completions` API | vLLM, LM Studio, llama.cpp server, LocalAI, Ollama `/v1`, internal gateways |
 | Google Gemini |    `google:` | `GOOGLE_API_KEY` or `GEMINI_API_KEY` | Supports chat, streaming, JSON output, and tools |
-| Anthropic     | `anthropic:` | `ANTHROPIC_API_KEY`                  | Claude-compatible API                            |
+| Anthropic     | `anthropic:` | `ANTHROPIC_API_KEY`                  | Claude Messages API; supports chat, JSON output, and tools |
 | Ollama        |    `ollama:` | optional `OLLAMA_BASE_URL`           | Local models through Ollama                      |
 
 ---

@@ -371,6 +371,39 @@ def test_google_error_mapping(monkeypatch, status_code, error_type):
         )
 
 
+def test_google_stream_error_reads_body_before_raising(monkeypatch):
+    # On a streamed error the body must be read before access, otherwise
+    # httpx raises ResponseNotRead and masks the real provider error.
+    class ErrorStreamResponse:
+        status_code = 500
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def read(self):
+            return b"upstream boom"
+
+        def iter_bytes(self):  # pragma: no cover - should not be reached on error
+            yield b""
+
+    class ErrorStreamClient(FakeClient):
+        def stream(self, method, url, *, headers, json):
+            return ErrorStreamResponse()
+
+    monkeypatch.setattr("slimx.providers.google.httpx.Client", ErrorStreamClient)
+
+    provider = GoogleProvider(api_key="test-key")
+    with pytest.raises(ProviderError):
+        list(
+            provider.stream(
+                ChatRequest(model="gemini-3.5-flash", messages=[Message.user("Hi")])
+            )
+        )
+
+
 def test_google_async_chat(monkeypatch):
     monkeypatch.setattr("slimx.providers.google_async.httpx.AsyncClient", AsyncFakeClient)
 

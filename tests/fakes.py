@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Iterable, Sequence
 
+from slimx.errors import ProviderTimeoutError
 from slimx.low.types import ChatRequest
 from slimx.providers.base import Provider, ProviderCapabilities
 from slimx.tooling import ToolSpec
@@ -22,7 +23,8 @@ class FakeProvider(Provider):
         self.timeouts.append(timeout)
         if self.fail_times:
             self.fail_times -= 1
-            raise RuntimeError("transient")
+            # Simulate a transient failure (the kind retry() is meant to recover from).
+            raise ProviderTimeoutError("transient")
 
         if tools and len(self.calls) == 1:
             return Result(

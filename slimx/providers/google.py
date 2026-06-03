@@ -70,7 +70,11 @@ class GoogleProvider(Provider):
 
         with httpx.Client(timeout=timeout or 30.0) as client:
             with client.stream("POST", url, headers=self._headers(), json=payload) as response:
-                _raise_for_status(response.status_code, response.text)
+                if response.status_code >= 400:
+                    # Body must be read before access on a streamed response,
+                    # otherwise httpx raises ResponseNotRead.
+                    body = response.read().decode("utf-8", errors="replace")
+                    _raise_for_status(response.status_code, body)
 
                 for chunk in iter_sse_data(response.iter_bytes()):
                     if not chunk or chunk == "[DONE]":

@@ -22,7 +22,7 @@ def tool(fn: Callable[..., Any]) -> ToolSpec:
         if p.kind in (p.VAR_POSITIONAL, p.VAR_KEYWORD):
             raise TypeError("*args/**kwargs not supported for @tool")
         props[p.name] = _schema_for_type(hints.get(p.name, Any))
-        if p.default is inspect._empty:
+        if p.default is inspect.Parameter.empty:
             required.append(p.name)
     schema = {"type":"object","properties":props,"required":required,"additionalProperties":False}
     return ToolSpec(name=name, description=desc, parameters=schema, fn=fn)
