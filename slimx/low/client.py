@@ -1,4 +1,5 @@
 import json
+import time
 from typing import Iterable, Optional, Sequence
 from ..messages import Message
 from ..types import Result, StreamEvent
@@ -16,10 +17,12 @@ class Client:
 
     def chat(self, req: ChatRequest, *, tools: Sequence[ToolSpec]=(), tool_runtime: str="none", max_steps: int=6) -> Result:
         tool_map = {t.name: t for t in tools}
+        started = time.perf_counter()
 
-        res = retry(lambda: self.provider.chat(req, tools=tools), retries=self.retries)
+        res = retry(lambda: self.provider.chat(req, tools=tools, timeout=self.timeout), retries=self.retries)
 
         if tool_runtime != "auto" or not res.tool_calls or not tool_map:
+            self._attach_trace(res, req=req, started=started, steps=0)
             return res
 
         # Auto tool loop (best-effort cross-provider)
@@ -27,6 +30,7 @@ class Client:
         steps = 0
         while res.tool_calls and steps < max_steps:
             steps += 1
+            messages.append(Message.assistant("", tool_calls=[_tool_call_to_provider_dict(tc) for tc in res.tool_calls]))
             for tc in res.tool_calls:
                 spec = tool_map.get(tc.name)
                 if not spec:
@@ -42,20 +46,22 @@ class Client:
                 response_format=req.response_format,
                 extra=req.extra,
             )
-            res = retry(lambda: self.provider.chat(req, tools=tools), retries=self.retries)
+            res = retry(lambda: self.provider.chat(req, tools=tools, timeout=self.timeout), retries=self.retries)
             if not res.tool_calls:
                 break
+        self._attach_trace(res, req=req, started=started, steps=steps)
         return res
 
     def stream(self, req: ChatRequest, *, tools: Sequence[ToolSpec]=()) -> Iterable[StreamEvent]:
-        return self.provider.stream(req, tools=tools)
+        return self.provider.stream(req, tools=tools, timeout=self.timeout)
 
     async def achat(self, req: ChatRequest, *, tools: Sequence[ToolSpec]=(), tool_runtime: str="none", max_steps: int=6) -> Result:
+        started = time.perf_counter()
         # async retry
         last = None
         for i in range(self.retries + 1):
             try:
-                res = await self.provider.achat(req, tools=tools)
+                res = await self.provider.achat(req, tools=tools, timeout=self.timeout)
                 break
             except Exception as e:
                 last = e
@@ -66,12 +72,14 @@ class Client:
 
         tool_map = {t.name: t for t in tools}
         if tool_runtime != "auto" or not res.tool_calls or not tool_map:
+            self._attach_trace(res, req=req, started=started, steps=0)
             return res
 
         messages = list(req.messages)
         steps = 0
         while res.tool_calls and steps < max_steps:
             steps += 1
+            messages.append(Message.assistant("", tool_calls=[_tool_call_to_provider_dict(tc) for tc in res.tool_calls]))
             for tc in res.tool_calls:
                 spec = tool_map.get(tc.name)
                 if not spec:
@@ -91,7 +99,7 @@ class Client:
             last = None
             for i in range(self.retries + 1):
                 try:
-                    res = await self.provider.achat(req, tools=tools)
+                    res = await self.provider.achat(req, tools=tools, timeout=self.timeout)
                     break
                 except Exception as e:
                     last = e
@@ -102,8 +110,28 @@ class Client:
 
             if not res.tool_calls:
                 break
+        self._attach_trace(res, req=req, started=started, steps=steps)
         return res
 
     async def astream(self, req: ChatRequest, *, tools: Sequence[ToolSpec]=()):
-        async for ev in self.provider.astream(req, tools=tools):
+        async for ev in self.provider.astream(req, tools=tools, timeout=self.timeout):
             yield ev
+
+    def _attach_trace(self, res: Result, *, req: ChatRequest, started: float, steps: int) -> None:
+        res.trace.update({
+            "provider": self.provider_name,
+            "model": req.model,
+            "elapsed_ms": int((time.perf_counter() - started) * 1000),
+            "retries": self.retries,
+            "tool_steps": steps,
+            "tool_call_count": len(res.tool_calls or []),
+            "timeout": self.timeout,
+        })
+
+
+def _tool_call_to_provider_dict(tc) -> dict:
+    return {
+        "id": tc.id or tc.name,
+        "type": "function",
+        "function": {"name": tc.name, "arguments": tc.arguments_json},
+    }

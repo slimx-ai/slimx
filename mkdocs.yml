@@ -20,9 +20,12 @@ nav:
       - High vs Low: concepts/high_vs_low.md
       - Core Types: concepts/types.md
       - Providers: concepts/providers.md
+      - Provider-neutral Calls: concepts/provider-neutral-calls.md
+      - Provider Capabilities: concepts/provider-capabilities.md
       - Tools: concepts/tools.md
       - Streaming: concepts/streaming.md
       - Structured Output: concepts/structured_output.md
+      - SlimX-RAG Integration: concepts/slimx-rag.md
       - Plugins: concepts/plugins.md
   - API Reference:
       - High-level: api/high.md

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 
 @dataclass(frozen=True)
@@ -24,6 +24,7 @@ class Message:
     # Tool message fields
     tool_call_id: Optional[str] = None
     tool_name: Optional[str] = None
+    tool_calls: List[Dict[str, Any]] = field(default_factory=list)
 
     metadata: Dict[str, Any] = field(default_factory=dict)
 
@@ -36,8 +37,14 @@ class Message:
         return Message("user", content, name=name, metadata=metadata or {})
 
     @staticmethod
-    def assistant(content: str, *, name: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> "Message":
-        return Message("assistant", content, name=name, metadata=metadata or {})
+    def assistant(
+        content: str,
+        *,
+        name: Optional[str] = None,
+        tool_calls: Optional[List[Dict[str, Any]]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> "Message":
+        return Message("assistant", content, name=name, tool_calls=tool_calls or [], metadata=metadata or {})
 
     @staticmethod
     def tool(
@@ -72,6 +79,8 @@ class Message:
             d["tool_call_id"] = self.tool_call_id
         if self.tool_name:
             d["tool_name"] = self.tool_name
+        if self.tool_calls:
+            d["tool_calls"] = self.tool_calls
 
         # Optional extra fields
         if self.metadata:

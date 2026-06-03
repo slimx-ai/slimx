@@ -1,4 +1,4 @@
-# SlimX (`slimx`) — v0.4.0
+# SlimX (`slimx`) — v0.4.1
 
 SlimX is a **slim, intuitive, lightweight** Python library for calling LLMs and building LLM systems.
 
@@ -73,7 +73,7 @@ Streaming:
 
 ```python
 for ev in m.stream("Tell a short story in 5 lines."):
-    if ev.type == "token":
+    if ev.type == "text_delta":
         print(ev.text, end="", flush=True)
 print()
 ```
@@ -115,6 +115,5 @@ print(res.data)
 This bundle includes GitHub Actions:
 - CI (`.github/workflows/ci.yml`)
 - Docs deploy to GitHub Pages (`docs.yml`)
-- PyPI publish on tag (`publish.yml`)
 
 See `README.md` and `docs/` for details.

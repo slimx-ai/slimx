@@ -5,10 +5,11 @@ from typing import Any, Dict, Sequence
 from ..types import Result, StreamEvent, Usage
 from ..tooling import ToolSpec
 from ..errors import ProviderError, ProviderAuthError, ProviderRateLimitError
-from .base import Provider
+from .base import Provider, ProviderCapabilities
 
 class AnthropicAsyncProvider(Provider):
     name="anthropic"
+    capabilities = ProviderCapabilities(async_chat=True)
     def __init__(self, api_key: str, base_url: str="https://api.anthropic.com", version: str="2023-06-01"):
         self.api_key=api_key
         self.base_url=base_url.rstrip("/")
@@ -21,11 +22,11 @@ class AnthropicAsyncProvider(Provider):
         return cls(api_key, os.environ.get("ANTHROPIC_BASE_URL","https://api.anthropic.com"), os.environ.get("ANTHROPIC_VERSION","2023-06-01"))
     def _headers(self)->Dict[str,str]:
         return {"x-api-key":self.api_key,"anthropic-version":self.version,"content-type":"application/json"}
-    def chat(self, req, *, tools: Sequence[ToolSpec]=()):
+    def chat(self, req, *, tools: Sequence[ToolSpec]=(), timeout=None):
         raise NotImplementedError
-    def stream(self, req, *, tools: Sequence[ToolSpec]=()):
+    def stream(self, req, *, tools: Sequence[ToolSpec]=(), timeout=None):
         raise NotImplementedError
-    async def achat(self, req, *, tools: Sequence[ToolSpec]=()):
+    async def achat(self, req, *, tools: Sequence[ToolSpec]=(), timeout=None):
         sys=[]
         msgs=[]
         for m in req.messages:
@@ -39,7 +40,7 @@ class AnthropicAsyncProvider(Provider):
         if req.temperature is not None:
             payload["temperature"]=req.temperature
         url=f"{self.base_url}/v1/messages"
-        async with httpx.AsyncClient(timeout=30.0) as c:
+        async with httpx.AsyncClient(timeout=timeout or 30.0) as c:
             r=await c.post(url, headers=self._headers(), json=payload)
         if r.status_code in (401,403):
             raise ProviderAuthError(r.text)
@@ -51,7 +52,7 @@ class AnthropicAsyncProvider(Provider):
         text="".join([b.get("text","") for b in (data.get("content") or []) if b.get("type")=="text"])
         usage=Usage(prompt_tokens=(data.get("usage") or {}).get("input_tokens"), completion_tokens=(data.get("usage") or {}).get("output_tokens"))
         return Result(text=text, raw=data, usage=usage)
-    async def astream(self, req, *, tools: Sequence[ToolSpec]=()):
-        res=await self.achat(req, tools=tools)
+    async def astream(self, req, *, tools: Sequence[ToolSpec]=(), timeout=None):
+        res=await self.achat(req, tools=tools, timeout=timeout)
         yield StreamEvent(type="text_delta", text=res.text, raw=res.raw)
         yield StreamEvent(type="done")

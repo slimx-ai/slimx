@@ -165,6 +165,7 @@ class Result:
 
     # Back-compat; we may later rename this to `parsed` officially.
     data: Any = None
+    trace: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def parsed(self) -> Any:

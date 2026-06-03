@@ -7,13 +7,14 @@ from ..types import Result, StreamEvent, ToolCall, Usage
 from ..tooling import ToolSpec
 from ..errors import ProviderError, ProviderAuthError, ProviderRateLimitError
 from ..utils.sse_async import aiter_sse_data
-from .base import Provider
+from .base import Provider, ProviderCapabilities
 
 def _tools_payload(tools: Sequence[ToolSpec]):
     return [{"type":"function","function":{"name":t.name,"description":t.description,"parameters":t.parameters}} for t in tools]
 
 class OpenAIAsyncProvider(Provider):
     name="openai"
+    capabilities = ProviderCapabilities(tools=True, structured_output=True, streaming=True, async_chat=True, async_streaming=True)
     def __init__(self, api_key: str, base_url: str="https://api.openai.com/v1"):
         self.api_key=api_key
         self.base_url=base_url.rstrip("/")
@@ -26,18 +27,18 @@ class OpenAIAsyncProvider(Provider):
         return cls(api_key, base_url)
     def _headers(self)->Dict[str,str]:
         return {"Authorization":f"Bearer {self.api_key}","Content-Type":"application/json"}
-    def chat(self, req, *, tools: Sequence[ToolSpec]=()):
+    def chat(self, req, *, tools: Sequence[ToolSpec]=(), timeout=None):
         raise NotImplementedError
-    def stream(self, req, *, tools: Sequence[ToolSpec]=()):
+    def stream(self, req, *, tools: Sequence[ToolSpec]=(), timeout=None):
         raise NotImplementedError
-    async def achat(self, req, *, tools: Sequence[ToolSpec]=()):
+    async def achat(self, req, *, tools: Sequence[ToolSpec]=(), timeout=None):
         payload=req.to_dict()
         if tools:
             payload["tools"]=_tools_payload(tools)
         if payload.get("response_format")=="json_object":
             payload["response_format"]={"type":"json_object"}
         url=f"{self.base_url}/chat/completions"
-        async with httpx.AsyncClient(timeout=30.0) as c:
+        async with httpx.AsyncClient(timeout=timeout or 30.0) as c:
             r=await c.post(url, headers=self._headers(), json=payload)
         if r.status_code==401:
             raise ProviderAuthError(r.text)
@@ -59,7 +60,7 @@ class OpenAIAsyncProvider(Provider):
             tool_calls.append(ToolCall(id=tc.get("id",""), name=fn.get("name",""), arguments=args_obj))
         usage=Usage.from_openai(data.get("usage") or {})
         return Result(text=text, raw=data, usage=usage, tool_calls=tool_calls)
-    async def astream(self, req, *, tools: Sequence[ToolSpec]=()):
+    async def astream(self, req, *, tools: Sequence[ToolSpec]=(), timeout=None):
         payload=req.to_dict()
         if tools:
             payload["tools"]=_tools_payload(tools)
@@ -68,7 +69,7 @@ class OpenAIAsyncProvider(Provider):
         payload["stream"]=True
         url=f"{self.base_url}/chat/completions"
         tool_acc={}
-        async with httpx.AsyncClient(timeout=None) as c:
+        async with httpx.AsyncClient(timeout=timeout) as c:
             async with c.stream("POST", url, headers=self._headers(), json=payload) as r:
                 if r.status_code==401:
                     raise ProviderAuthError(await r.aread())
