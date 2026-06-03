@@ -1,6 +1,6 @@
 # SlimX (`slimx`) — v0.5.0
 
-SlimX is a **slim, intuitive, lightweight** Python library for calling LLMs and building LLM systems.
+SlimX is a tiny, inspectable LLM runtime for building vendor-neutral AI software across cloud and local models.
 
 It is designed around **two clearly separated APIs**:
 
