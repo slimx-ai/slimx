@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.8.0 (2026-06-03)
+
+### Added
+- **Parallel (ensemble) execution**: `parallel(models, mode="all" | "race")` fans one
+  prompt out to multiple models concurrently and returns an inspectable
+  `ParallelResult` (`results`, `errors`, `winner`, `text`, `trace`). `all` returns
+  every result; `race` returns the first success and abandons the rest. Failures are
+  surfaced in `errors` (never swallowed) and each result keeps its raw provider
+  response. Tools/streaming/judge modes are intentionally out of scope for v1.
+  Exposed at the top level: `parallel`, `Parallel`, `ParallelResult`, `ParallelItem`.
+- `RELEASING.md`: a repeatable, tag-based release checklist.
+- Architecture overview (`ARCHITECTURE.md` + `docs/concepts/architecture.md`) with
+  mermaid diagrams; mkdocs now renders mermaid via `pymdownx.superfences`.
+
 ## v0.7.2 (2026-06-03)
 
 ### Fixed

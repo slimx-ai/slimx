@@ -17,7 +17,7 @@ from __future__ import annotations
 from importlib import import_module
 from typing import Any, TYPE_CHECKING
 
-__version__ = "0.7.2"
+__version__ = "0.8.0"
 
 _LAZY: dict[str, tuple[str, str]] = {
     # High-level
@@ -29,6 +29,12 @@ _LAZY: dict[str, tuple[str, str]] = {
     # Tooling
     "tool": ("slimx.tooling", "tool"),
     "ToolSpec": ("slimx.tooling", "ToolSpec"),
+
+    # Parallel / ensemble execution
+    "parallel": ("slimx._parallel", "parallel"),
+    "Parallel": ("slimx._parallel", "Parallel"),
+    "ParallelResult": ("slimx._parallel", "ParallelResult"),
+    "ParallelItem": ("slimx._parallel", "ParallelItem"),
 
     # Messages & core types
     "Message": ("slimx.messages", "Message"),
@@ -57,6 +63,12 @@ __all__ = [
     "tool",
     "ToolSpec",
 
+    # Parallel / ensemble execution
+    "parallel",
+    "Parallel",
+    "ParallelResult",
+    "ParallelItem",
+
     # Messages & core types
     "Message",
     "Result",
@@ -82,6 +94,7 @@ if TYPE_CHECKING:
     from slimx.low.client import Client
     from slimx.low.types import ChatRequest
     from slimx.messages import Message
+    from slimx._parallel import Parallel, ParallelItem, ParallelResult, parallel
     from slimx.providers.registry import get_provider, list_providers
     from slimx.tooling import ToolSpec, tool
     from slimx.types import Result, StreamEvent, ToolCall, Usage

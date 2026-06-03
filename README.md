@@ -1,4 +1,4 @@
-# SlimX (`slimx`) — v0.7.2
+# SlimX (`slimx`) — v0.8.0
 
 SlimX is a tiny, inspectable LLM runtime for building vendor-neutral AI software across cloud and local models.
 
@@ -275,6 +275,26 @@ res = m("What is 12 + 30?")
 
 print(res.text)
 ```
+
+---
+
+## Parallel execution
+
+Fan one prompt out to several models at once with `parallel(...)`. Use `mode="all"` to
+compare every answer, or `mode="race"` for the first successful response.
+
+```python
+from slimx import parallel
+
+ensemble = parallel(["google:gemini-3.5-flash", "openai:gpt-4.1-nano"])
+res = ensemble("Explain SlimX in one paragraph.")
+
+for item in res.results:
+    print(item.model, item.result.text if item.ok else item.error)
+```
+
+Failures are surfaced in `res.errors` (never swallowed) and each result keeps its raw
+provider response. See [docs: Parallel execution](docs/concepts/parallel.md).
 
 ---
 
