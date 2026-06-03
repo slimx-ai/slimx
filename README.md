@@ -9,6 +9,9 @@ It is designed around **two clearly separated APIs**:
 
 SlimX supports **multiple providers** — OpenAI, Anthropic, Ollama, and Google Gemini — plus **provider plugins** for third-party providers without modifying core.
 
+> **How it works:** [`ARCHITECTURE.md`](ARCHITECTURE.md) is an annotated, diagram-driven tour of the runtime.
+> **How we build it:** [`DEVELOPMENT.md`](DEVELOPMENT.md) is the engineering charter, Provider Contract, and roadmap.
+
 ---
 
 ## Install

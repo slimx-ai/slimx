@@ -514,5 +514,5 @@ boundary into SlimX's canonical `Result`, `StreamEvent`, `ToolCall`, and `Usage`
 OpenAI-compatible providers reuse the OpenAI shape helper, Google has a custom Gemini
 mapping layer, Anthropic has a custom Messages API mapper, and Ollama has a native
 `/api/chat` mapper — exactly the right separation of concerns. See
-`DEVELOPMENT.md` (in the repository root) for the engineering charter, the full Provider
+[`DEVELOPMENT.md`](DEVELOPMENT.md) for the engineering charter, the full Provider
 Contract, and the roadmap.
