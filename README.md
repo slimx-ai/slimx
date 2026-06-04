@@ -1,16 +1,52 @@
-# SlimX (`slimx`) — v1.0.0
+# SlimX
 
-SlimX is a tiny, inspectable LLM runtime for building vendor-neutral AI software across cloud and local models.
+[![PyPI](https://img.shields.io/pypi/v/slimx.svg)](https://pypi.org/project/slimx/)
+[![Python](https://img.shields.io/pypi/pyversions/slimx.svg)](https://pypi.org/project/slimx/)
+[![CI](https://github.com/slimx-ai/slimx/actions/workflows/ci.yml/badge.svg)](https://github.com/slimx-ai/slimx/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-It is designed around **two clearly separated APIs**:
+**The LLM runtime you can actually read.** A tiny, inspectable, vendor-neutral Python
+library for calling LLMs — one API across OpenAI, Anthropic, Gemini, Ollama, and any
+OpenAI-compatible server.
 
-* **High-level API** (`slimx`) — “1-minute productivity”: `llm(...)`, `.stream(...)`, `.json(...)`, tools, retries.
-* **Low-level API** (`slimx.low`) — “systems builder primitives”: explicit `Client`, `ChatRequest`, `Message`, provider registry, middleware.
+```python
+from slimx import llm
 
-SlimX supports **multiple providers** — OpenAI, Anthropic, Ollama, and Google Gemini — plus **provider plugins** for third-party providers without modifying core.
+m = llm("anthropic:claude-haiku-4-5")
+print(m("Hello, world").text)
+```
 
-> **How it works:** [`ARCHITECTURE.md`](ARCHITECTURE.md) is an annotated, diagram-driven tour of the runtime.
-> **How we build it:** [`DEVELOPMENT.md`](DEVELOPMENT.md) is the engineering charter, Provider Contract, and roadmap.
+Change the provider by changing the string — the rest of your code stays the same.
+
+## Why SlimX
+
+- **One API, every model** — OpenAI, Anthropic, Gemini, Ollama, and OpenAI-compatible
+  servers (vLLM, llama.cpp, LM Studio, …). No lock-in.
+- **See exactly what's sent** — dry-run the precise request before it leaves, hook every
+  call, and save reproducible call records. Glass box, not black box.
+- **Tiny & readable** — ~3,000 lines of code, one dependency (`httpx`), fully typed. Read
+  the whole thing in an afternoon.
+- **Call many models at once** — `parallel(...)` to compare answers, race for the fastest,
+  or let a judge model pick the best.
+- **Explicit, with batteries** — tools, streaming, structured output with auto-repair, a
+  two-layer high/low API, conformance-tested providers, and a `slimx` CLI.
+
+```python
+# See what SlimX would send — exact URL, headers (secrets redacted), body — no network call:
+print(llm("openai:gpt-4.1-nano").inspect("Hello").pretty())
+
+# Ask several models and let one judge the best answer:
+from slimx import parallel
+best = parallel(
+    ["openai:gpt-4.1-mini", "google:gemini-3.5-flash"],
+    mode="judge", judge="anthropic:claude-haiku-4-5",
+)
+print(best("Explain SlimX in one line.").text)
+```
+
+> Going deeper: [`ARCHITECTURE.md`](ARCHITECTURE.md) is a diagram-driven tour of the
+> runtime; [`DEVELOPMENT.md`](DEVELOPMENT.md) is the engineering charter and Provider
+> Contract.
 
 ---
 

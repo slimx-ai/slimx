@@ -3,18 +3,18 @@
 A short, repeatable checklist so every release is consistent. SlimX uses semantic
 versioning under `0.x` (minor = features/behavior changes, patch = fixes).
 
-## Version lives in three places
+## Version lives in two places
 
-Keep these in sync on every release:
+Keep these in sync on every release (the README shows the version via its PyPI badge, so
+there's nothing to bump there):
 
 1. `pyproject.toml` → `version = "X.Y.Z"`
 2. `slimx/__init__.py` → `__version__ = "X.Y.Z"`
-3. `README.md` → the `# SlimX (slimx) — vX.Y.Z` header
 
 ## Checklist
 
 ```bash
-# 1. Bump the three version locations above to X.Y.Z, and add a dated CHANGELOG entry.
+# 1. Bump the two version locations above to X.Y.Z, and add a dated CHANGELOG entry.
 
 # 2. Refresh the lockfile so it pins the new version.
 uv lock
