@@ -8,7 +8,7 @@ import httpx
 
 from ..errors import ProviderAuthError
 from ..tooling import ToolSpec
-from ..types import Result, StreamEvent
+from ..types import InspectedRequest, Result, StreamEvent, redact_headers
 from .anthropic import (
     DEFAULT_ANTHROPIC_BASE_URL,
     DEFAULT_ANTHROPIC_VERSION,
@@ -50,6 +50,15 @@ class AnthropicAsyncProvider(Provider):
             "anthropic-version": self.version,
             "content-type": "application/json",
         }
+
+    def build_request(self, req, *, tools: Sequence[ToolSpec] = (), stream: bool = False):
+        return InspectedRequest(
+            provider=self.name,
+            method="POST",
+            url=f"{self.base_url}/v1/messages",
+            headers=redact_headers(self._headers()),
+            payload=_build_payload(req, tools),
+        )
 
     def chat(self, req, *, tools: Sequence[ToolSpec] = (), timeout: Optional[float] = None):
         raise NotImplementedError

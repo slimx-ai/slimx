@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional
+
+if TYPE_CHECKING:
+    from .record import CallRecord
 
 
 # -------------------------
@@ -173,6 +176,57 @@ class Result:
     data: Any = None
     trace: Dict[str, Any] = field(default_factory=dict)
 
+    # A compact snapshot of the originating request, attached by the Client so a
+    # Result is self-describing (used by `to_record()`). None for raw provider calls.
+    request: Optional[Dict[str, Any]] = None
+
     @property
     def parsed(self) -> Any:
         return self.data
+
+    def to_record(self) -> "CallRecord":
+        """Build a reproducible, serializable record of this call."""
+        from .record import CallRecord  # local import to avoid a cycle
+
+        return CallRecord.from_result(self)
+
+
+# -------------------------
+# Request inspection (dry-run)
+# -------------------------
+
+_SECRET_HEADER_KEYS = {"authorization", "x-api-key", "x-goog-api-key", "api-key"}
+
+
+def redact_headers(headers: Dict[str, str]) -> Dict[str, str]:
+    """Return a copy of headers with secret values masked (for inspection/logging)."""
+    out: Dict[str, str] = {}
+    for k, v in headers.items():
+        if k.lower() in _SECRET_HEADER_KEYS:
+            out[k] = "Bearer ***" if v.lower().startswith("bearer ") else "***"
+        else:
+            out[k] = v
+    return out
+
+
+@dataclass(frozen=True)
+class InspectedRequest:
+    """The exact HTTP request SlimX would send for a call, without sending it.
+
+    Secret header values are redacted. `payload` is the JSON body.
+    """
+
+    provider: str
+    method: str
+    url: str
+    headers: Dict[str, str]
+    payload: Dict[str, Any]
+
+    def pretty(self) -> str:
+        import json
+
+        lines = [f"{self.method} {self.url}", f"# provider: {self.provider}", "# headers:"]
+        lines += [f"  {k}: {v}" for k, v in self.headers.items()]
+        lines.append("# payload:")
+        lines.append(json.dumps(self.payload, indent=2, ensure_ascii=False, default=str))
+        return "\n".join(lines)

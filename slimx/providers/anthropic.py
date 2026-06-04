@@ -10,7 +10,7 @@ import httpx
 from ..errors import ProviderAuthError, ProviderError, ProviderRateLimitError
 from ..messages import Message
 from ..tooling import ToolSpec
-from ..types import Result, StreamEvent, ToolCall, Usage
+from ..types import InspectedRequest, Result, StreamEvent, ToolCall, Usage, redact_headers
 from .base import Provider, ProviderCapabilities
 
 DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com"
@@ -48,6 +48,15 @@ class AnthropicProvider(Provider):
             "anthropic-version": self.version,
             "content-type": "application/json",
         }
+
+    def build_request(self, req, *, tools: Sequence[ToolSpec] = (), stream: bool = False):
+        return InspectedRequest(
+            provider=self.name,
+            method="POST",
+            url=f"{self.base_url}/v1/messages",
+            headers=redact_headers(self._headers()),
+            payload=_build_payload(req, tools),
+        )
 
     def chat(self, req, *, tools: Sequence[ToolSpec] = (), timeout: Optional[float] = None) -> Result:
         payload = _build_payload(req, tools)

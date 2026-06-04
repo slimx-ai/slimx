@@ -10,7 +10,7 @@ from ..errors import ProviderAuthError, ProviderError, ProviderRateLimitError
 from ..low.types import ChatRequest
 from ..messages import Message
 from ..tooling import ToolSpec
-from ..types import Result, StreamEvent, ToolCall, Usage
+from ..types import InspectedRequest, Result, StreamEvent, ToolCall, Usage, redact_headers
 from ..utils.sse import iter_sse_data
 from .base import Provider, ProviderCapabilities
 
@@ -41,6 +41,22 @@ class GoogleProvider(Provider):
             "x-goog-api-key": self.api_key,
             "Content-Type": "application/json",
         }
+
+    def build_request(
+        self,
+        req: ChatRequest,
+        *,
+        tools: Sequence[ToolSpec] = (),
+        stream: bool = False,
+    ) -> InspectedRequest:
+        verb = "streamGenerateContent?alt=sse" if stream else "generateContent"
+        return InspectedRequest(
+            provider=self.name,
+            method="POST",
+            url=f"{self.base_url}/{_model_path(req.model)}:{verb}",
+            headers=redact_headers(self._headers()),
+            payload=_payload(req, tools=tools),
+        )
 
     def chat(
         self,

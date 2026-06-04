@@ -9,7 +9,7 @@ import httpx
 from ..errors import ProviderAuthError
 from ..low.types import ChatRequest
 from ..tooling import ToolSpec
-from ..types import Result, StreamEvent
+from ..types import InspectedRequest, Result, StreamEvent, redact_headers
 from ..utils.sse_async import aiter_sse_data
 from .base import Provider, ProviderCapabilities
 from .google import (
@@ -48,6 +48,22 @@ class GoogleAsyncProvider(Provider):
             "x-goog-api-key": self.api_key,
             "Content-Type": "application/json",
         }
+
+    def build_request(
+        self,
+        req: ChatRequest,
+        *,
+        tools: Sequence[ToolSpec] = (),
+        stream: bool = False,
+    ) -> InspectedRequest:
+        verb = "streamGenerateContent?alt=sse" if stream else "generateContent"
+        return InspectedRequest(
+            provider=self.name,
+            method="POST",
+            url=f"{self.base_url}/{_model_path(req.model)}:{verb}",
+            headers=redact_headers(self._headers()),
+            payload=_payload(req, tools=tools),
+        )
 
     def chat(
         self,

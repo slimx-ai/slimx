@@ -7,7 +7,7 @@ from typing import Any, Dict, Iterable, Optional, Sequence
 
 from ..errors import ProviderError
 from ..tooling import ToolSpec
-from ..types import Result, StreamEvent, Usage
+from ..types import InspectedRequest, Result, StreamEvent, Usage
 from ..utils.ndjson import iter_ndjson
 from .base import Provider, ProviderCapabilities
 
@@ -22,6 +22,15 @@ class OllamaProvider(Provider):
     @classmethod
     def from_env(cls):
         return cls(os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434"))
+
+    def build_request(self, req, *, tools: Sequence[ToolSpec] = (), stream: bool = False):
+        return InspectedRequest(
+            provider=self.name,
+            method="POST",
+            url=f"{self.base_url}/api/chat",
+            headers={"Content-Type": "application/json"},
+            payload=_payload(req, stream=stream),
+        )
 
     def chat(self, req, *, tools: Sequence[ToolSpec] = (), timeout=None):
         payload = _payload(req, stream=True)

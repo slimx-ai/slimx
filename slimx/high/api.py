@@ -1,4 +1,4 @@
-from typing import Any, Dict, Iterable, Optional, Sequence
+from typing import Any, Dict, Iterable, Mapping, Optional, Sequence
 
 from ..messages import Message
 from ..types import Result, StreamEvent
@@ -27,10 +27,11 @@ class Model:
         timeout: Optional[float] = None,
         retries: int = 2,
         provider_kwargs: Optional[Dict[str, Any]] = None,
+        hooks: Optional[Mapping[str, Any]] = None,
     ):
         provider_name, model_name = _parse_model(model)
         provider = get_provider(provider_name, async_mode=False, **(provider_kwargs or {}))
-        self._client = Client(provider, timeout=timeout, retries=retries)
+        self._client = Client(provider, timeout=timeout, retries=retries, hooks=hooks)
         self._model = model_name
         self._temperature = temperature
         self._max_tokens = max_tokens
@@ -41,6 +42,16 @@ class Model:
     def capabilities(self):
         """The selected provider's declared capabilities (`ProviderCapabilities`)."""
         return self._client.provider.capabilities
+
+    def inspect(self, prompt: str, *, stream: bool = False, **overrides: Any):
+        """Dry-run: return the exact request SlimX would send, without sending it."""
+        req = ChatRequest(
+            model=self._model,
+            messages=[Message.user(prompt)],
+            temperature=overrides.get("temperature", self._temperature),
+            max_tokens=overrides.get("max_tokens", self._max_tokens),
+        )
+        return self._client.inspect(req, tools=self._tools, stream=stream)
 
     def __call__(self, prompt: str, **overrides: Any) -> Result:
         req = ChatRequest(
@@ -94,10 +105,11 @@ class AsyncModel:
         timeout: Optional[float] = None,
         retries: int = 2,
         provider_kwargs: Optional[Dict[str, Any]] = None,
+        hooks: Optional[Mapping[str, Any]] = None,
     ):
         provider_name, model_name = _parse_model(model)
         provider = get_provider(provider_name, async_mode=True, **(provider_kwargs or {}))
-        self._client = Client(provider, timeout=timeout, retries=retries)
+        self._client = Client(provider, timeout=timeout, retries=retries, hooks=hooks)
         self._model = model_name
         self._temperature = temperature
         self._max_tokens = max_tokens
@@ -108,6 +120,16 @@ class AsyncModel:
     def capabilities(self):
         """The selected provider's declared capabilities (`ProviderCapabilities`)."""
         return self._client.provider.capabilities
+
+    def inspect(self, prompt: str, *, stream: bool = False, **overrides: Any):
+        """Dry-run: return the exact request SlimX would send, without sending it."""
+        req = ChatRequest(
+            model=self._model,
+            messages=[Message.user(prompt)],
+            temperature=overrides.get("temperature", self._temperature),
+            max_tokens=overrides.get("max_tokens", self._max_tokens),
+        )
+        return self._client.inspect(req, tools=self._tools, stream=stream)
 
     async def __call__(self, prompt: str, **overrides: Any) -> Result:
         req = ChatRequest(

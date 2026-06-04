@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional, Sequence
 
 from ..errors import ProviderError
 from ..tooling import ToolSpec
-from ..types import Result, StreamEvent, Usage
+from ..types import InspectedRequest, Result, StreamEvent, Usage
 from ..utils.ndjson import aiter_ndjson
 from .base import Provider, ProviderCapabilities
 
@@ -32,6 +32,15 @@ class OllamaAsyncProvider(Provider):
 
     def stream(self, req, *, tools: Sequence[ToolSpec] = (), timeout=None):
         raise NotImplementedError
+
+    def build_request(self, req, *, tools: Sequence[ToolSpec] = (), stream: bool = False):
+        return InspectedRequest(
+            provider=self.name,
+            method="POST",
+            url=f"{self.base_url}/api/chat",
+            headers={"Content-Type": "application/json"},
+            payload=_payload(req, stream=stream),
+        )
 
     async def achat(self, req, *, tools: Sequence[ToolSpec] = (), timeout=None):
         payload = _payload(req, stream=True)

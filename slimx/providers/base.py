@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import AsyncIterator, Awaitable, Iterable, Optional, Sequence
 from ..tooling import ToolSpec
 from ..low.types import ChatRequest
-from ..types import Result, StreamEvent
+from ..types import InspectedRequest, Result, StreamEvent
 
 @dataclass(frozen=True)
 class ProviderCapabilities:
@@ -56,3 +56,14 @@ class Provider(ABC):
         timeout: Optional[float]=None,
     ) -> AsyncIterator[StreamEvent]:
         raise NotImplementedError("Async streaming not implemented for this provider")
+
+    # Dry-run inspection: build the exact HTTP request without sending it.
+    # Optional; providers that support it return an InspectedRequest.
+    def build_request(
+        self,
+        req: ChatRequest,
+        *,
+        tools: Sequence[ToolSpec]=(),
+        stream: bool=False,
+    ) -> InspectedRequest:
+        raise NotImplementedError("Request inspection not implemented for this provider")

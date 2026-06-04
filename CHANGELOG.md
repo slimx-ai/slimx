@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.9.0 (2026-06-04)
+
+### Added — inspectability
+- **Inspect mode (dry-run):** `Model.inspect(prompt, stream=False)` /
+  `Client.inspect(req)` return an `InspectedRequest` — the exact method, URL, headers
+  (secrets redacted), and JSON payload SlimX would send, without making the call.
+  `build_request()` is implemented on every provider (sync + async).
+- **Trace hooks:** `Client(provider, hooks=...)` and `llm(model, hooks=...)` accept
+  `before_call` / `after_call` callbacks for bring-your-own observability. `after_call`
+  receives the trace on success or `{ok: False, error}` on failure; a hook that raises is
+  swallowed and never breaks the call.
+- **Reproducible call records:** `Result.to_record()` builds a `CallRecord`
+  (request snapshot, response, usage, trace, SlimX version) with `.save(path)` /
+  `CallRecord.load(path)`. The Client now attaches a request snapshot to every `Result`
+  as `result.request`.
+- New public exports: `InspectedRequest`, `CallRecord`.
+
 ## v0.8.0 (2026-06-03)
 
 ### Added

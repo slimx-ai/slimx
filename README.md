@@ -1,4 +1,4 @@
-# SlimX (`slimx`) — v0.8.0
+# SlimX (`slimx`) — v0.9.0
 
 SlimX is a tiny, inspectable LLM runtime for building vendor-neutral AI software across cloud and local models.
 
@@ -319,6 +319,32 @@ res = m.json("Paris is in France.", schema=City)
 
 print(res.data)
 ```
+
+---
+
+## Inspectability
+
+See exactly what SlimX does — dry-run a request, observe calls with hooks, and save
+reproducible call records. No hosted platform, no extra dependency.
+
+```python
+from slimx import llm, CallRecord
+
+m = llm("openai:gpt-4.1-nano")
+
+# 1) Dry-run: the exact request, secrets redacted, without sending it
+print(m.inspect("Hello").pretty())
+
+# 2) Hooks: observe every call (log it, push metrics, anything)
+traced = llm("openai:gpt-4.1-nano", hooks={"after_call": print})
+
+# 3) Reproducible records: save the whole call to JSON and reload it
+res = m("Capital of France?")
+res.to_record().save("run.json")
+CallRecord.load("run.json")
+```
+
+See [docs: Inspectability](docs/concepts/inspectability.md).
 
 ---
 

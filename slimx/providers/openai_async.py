@@ -6,7 +6,7 @@ import httpx
 
 from ..errors import ProviderAuthError
 from ..tooling import ToolSpec
-from ..types import StreamEvent
+from ..types import InspectedRequest, StreamEvent, redact_headers
 from ..utils.sse_async import aiter_sse_data
 from ._openai_shape import (
     StreamToolAccumulator,
@@ -42,6 +42,15 @@ class OpenAIAsyncProvider(Provider):
 
     def _headers(self) -> Dict[str, str]:
         return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+
+    def build_request(self, req, *, tools: Sequence[ToolSpec] = (), stream: bool = False):
+        return InspectedRequest(
+            provider=self.name,
+            method="POST",
+            url=f"{self.base_url}/chat/completions",
+            headers=redact_headers(self._headers()),
+            payload=build_payload(req, tools, stream=stream),
+        )
 
     def chat(self, req, *, tools: Sequence[ToolSpec] = (), timeout: Optional[float] = None):
         raise NotImplementedError
