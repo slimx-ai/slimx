@@ -85,6 +85,31 @@ def test_race_all_fail_returns_no_winner():
     assert len(res.errors) == 2
 
 
+def test_compare_mode_builds_side_by_side_text():
+    res = parallel(["ptest:a", "ptest:b"], mode="compare")("hi")
+    assert res.trace["mode"] == "compare"
+    assert res.text is not None
+    assert "### ptest:a" in res.text and "answer:a" in res.text
+    assert "### ptest:b" in res.text and "answer:b" in res.text
+    assert len(res.results) == 2
+
+
+def test_judge_mode_uses_judge_model_and_keeps_candidates():
+    res = parallel(["ptest:a", "ptest:b"], mode="judge", judge="ptest:judgeX")("hi")
+    assert res.trace["mode"] == "judge"
+    assert res.trace["judge"] == "ptest:judgeX"
+    # candidates (the fanned-out answers) are preserved
+    assert [it.model for it in res.candidates] == ["ptest:a", "ptest:b"]
+    # winner is the judge's own answer
+    assert res.winner is not None and res.winner.model == "ptest:judgeX"
+    assert res.text == "answer:judgeX"
+
+
+def test_judge_mode_requires_judge():
+    with pytest.raises(ValueError):
+        parallel(["ptest:a"], mode="judge")
+
+
 def test_invalid_mode_raises():
     with pytest.raises(ValueError):
         parallel(["ptest:a"], mode="bogus")

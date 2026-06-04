@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional, Sequence
 from .high.api import Model, llm
 from .types import Result
 
-_MODES = ("all", "race")
+_MODES = ("all", "race", "compare", "judge")
 
 
 @dataclass
@@ -57,6 +57,11 @@ class ParallelResult:
     winner: Optional[ParallelItem] = None
     trace: Dict[str, Any] = field(default_factory=dict)
 
+    @property
+    def candidates(self) -> List[ParallelItem]:
+        """Alias for ``results`` — reads naturally in judge/compare modes."""
+        return self.results
+
 
 class Parallel:
     def __init__(
@@ -64,11 +69,14 @@ class Parallel:
         models: Sequence[str],
         *,
         mode: str = "all",
+        judge: Optional[str] = None,
         max_workers: Optional[int] = None,
         **model_kwargs: Any,
     ):
         if mode not in _MODES:
             raise ValueError(f"mode must be one of {_MODES}, got {mode!r}")
+        if mode == "judge" and not judge:
+            raise ValueError("mode='judge' requires a judge model, e.g. judge='openai:gpt-4.1-mini'")
         self.mode = mode
         self._model_strings: List[str] = list(models)
         if not self._model_strings:
@@ -78,11 +86,17 @@ class Parallel:
         self._models: List[tuple[str, Model]] = [
             (m, llm(m, **model_kwargs)) for m in self._model_strings
         ]
+        self._judge_string = judge
+        self._judge_model: Optional[Model] = llm(judge, **model_kwargs) if judge else None
         self._max_workers = max_workers or len(self._models)
 
     def __call__(self, prompt: str, **overrides: Any) -> ParallelResult:
         if self.mode == "race":
             return self._race(prompt, overrides)
+        if self.mode == "compare":
+            return self._compare(prompt, overrides)
+        if self.mode == "judge":
+            return self._judge(prompt, overrides)
         return self._all(prompt, overrides)
 
     def _invoke(
@@ -106,20 +120,91 @@ class Parallel:
                 elapsed_ms=int((time.perf_counter() - start) * 1000),
             )
 
-    def _all(self, prompt: str, overrides: Dict[str, Any]) -> ParallelResult:
-        started = time.perf_counter()
+    def _gather(self, prompt: str, overrides: Dict[str, Any]) -> List[ParallelItem]:
         with ThreadPoolExecutor(max_workers=self._max_workers) as ex:
             futures = [
                 ex.submit(self._invoke, ms, m, prompt, overrides) for ms, m in self._models
             ]
-            items = [f.result() for f in futures]  # preserve input order
-        errors = [it for it in items if not it.ok]
+            return [f.result() for f in futures]  # preserve input order
+
+    def _all(self, prompt: str, overrides: Dict[str, Any]) -> ParallelResult:
+        started = time.perf_counter()
+        items = self._gather(prompt, overrides)
         return ParallelResult(
             text=None,
             results=items,
-            errors=errors,
+            errors=[it for it in items if not it.ok],
             winner=None,
             trace=self._trace("all", items, started),
+        )
+
+    def _compare(self, prompt: str, overrides: Dict[str, Any]) -> ParallelResult:
+        started = time.perf_counter()
+        items = self._gather(prompt, overrides)
+        blocks = []
+        for it in items:
+            body = it.result.text if it.ok and it.result else f"[error] {it.error}"
+            blocks.append(f"### {it.model}\n{body}")
+        return ParallelResult(
+            text="\n\n".join(blocks),  # a readable side-by-side comparison
+            results=items,
+            errors=[it for it in items if not it.ok],
+            winner=None,
+            trace=self._trace("compare", items, started),
+        )
+
+    def _judge(self, prompt: str, overrides: Dict[str, Any]) -> ParallelResult:
+        started = time.perf_counter()
+        candidates = self._gather(prompt, overrides)
+        ok = [it for it in candidates if it.ok and it.result]
+        trace = self._trace("judge", candidates, started)
+        trace["judge"] = self._judge_string
+
+        if not ok or self._judge_model is None:
+            return ParallelResult(
+                text=None,
+                results=candidates,
+                errors=[it for it in candidates if not it.ok],
+                winner=None,
+                trace=trace,
+            )
+
+        listing = "\n\n".join(
+            f"[{i + 1}] (from {it.model})\n{it.result.text}" for i, it in enumerate(ok)  # type: ignore[union-attr]
+        )
+        judge_prompt = (
+            f"You are judging candidate answers to the request below.\n\n"
+            f"REQUEST:\n{prompt}\n\nCANDIDATES:\n{listing}\n\n"
+            "Choose the single best answer, or synthesize a better one by combining their "
+            "strengths. Reply with ONLY the final answer — no commentary, no numbering."
+        )
+        jstart = time.perf_counter()
+        judge_str = self._judge_string or ""
+        jprovider = judge_str.split(":", 1)[0] if ":" in judge_str else "openai"
+        try:
+            jres = self._judge_model(judge_prompt)
+            winner = ParallelItem(
+                provider=jprovider,
+                model=judge_str,
+                result=jres,
+                elapsed_ms=int((time.perf_counter() - jstart) * 1000),
+            )
+            text = jres.text
+        except Exception as e:
+            winner = ParallelItem(
+                provider=jprovider,
+                model=judge_str,
+                error=f"{type(e).__name__}: {e}",
+                elapsed_ms=int((time.perf_counter() - jstart) * 1000),
+            )
+            text = None
+
+        return ParallelResult(
+            text=text,
+            results=candidates,
+            errors=[it for it in candidates if not it.ok],
+            winner=winner,
+            trace=trace,
         )
 
     def _race(self, prompt: str, overrides: Dict[str, Any]) -> ParallelResult:
@@ -166,10 +251,18 @@ def parallel(
     models: Sequence[str],
     *,
     mode: str = "all",
+    judge: Optional[str] = None,
     max_workers: Optional[int] = None,
     **model_kwargs: Any,
 ) -> Parallel:
     """Fan a single prompt out to multiple models concurrently.
+
+    Modes:
+        - ``"all"``     : return every model's result; ``text`` is ``None``.
+        - ``"race"``    : return the first success in ``winner``/``text``.
+        - ``"compare"`` : run all; ``text`` is a readable side-by-side of every answer.
+        - ``"judge"``   : run all candidates, then a ``judge`` model picks or synthesizes
+          the best answer (``text``/``winner``); candidates stay in ``results``.
 
     Example:
         >>> m = parallel(["google:gemini-3.5-flash", "openai:gpt-4.1-nano"])
@@ -177,11 +270,7 @@ def parallel(
         >>> for item in res.results:
         ...     print(item.model, item.result.text if item.ok else item.error)
 
-    Modes:
-        - ``"all"``  : return every model's result; ``text`` is ``None``.
-        - ``"race"`` : return the first success in ``winner``/``text``.
-
     Extra keyword arguments (e.g. ``temperature``, ``timeout``, ``retries``) are
     forwarded to each underlying model.
     """
-    return Parallel(models, mode=mode, max_workers=max_workers, **model_kwargs)
+    return Parallel(models, mode=mode, judge=judge, max_workers=max_workers, **model_kwargs)

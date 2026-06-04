@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.11.0 (2026-06-04)
+
+### Added
+- **Structured-output repair:** `.json(prompt, schema=..., repair=N)` re-prompts the
+  model with the parse/validation error and asks it to fix its output, up to `N` times.
+  `repair=0` (default) keeps the existing fail-fast behavior. No new dependency.
+- **Parallel `compare` and `judge` modes:**
+  - `parallel(models, mode="compare")` returns a readable side-by-side of every answer in
+    `text`.
+  - `parallel(models, mode="judge", judge="provider:model")` runs the candidates, then a
+    judge model picks or synthesizes the best answer (`text`/`winner`). The candidates are
+    always preserved in `results` (also `ParallelResult.candidates`).
+
 ## v0.10.0 (2026-06-04)
 
 ### Added — CLI & model discovery

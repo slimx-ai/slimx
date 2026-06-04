@@ -2,6 +2,7 @@ from typing import Any, Dict, Iterable, Mapping, Optional, Sequence
 
 from ..messages import Message
 from ..types import Result, StreamEvent
+from ..errors import SchemaError
 from ..schema import parse_json, schema_for, coerce_dataclass
 from ..tooling import ToolSpec
 from ..providers import get_provider
@@ -13,6 +14,33 @@ def _parse_model(model: str):
         p, m = model.split(":", 1)
         return p.strip(), m.strip()
     return "openai", model.strip()
+
+
+# ---- structured output helpers (shared by Model.json / AsyncModel.json) ----
+
+def _json_schema_parts(schema: Any):
+    if isinstance(schema, dict):
+        return schema, None
+    return schema_for(schema), schema
+
+
+def _json_system_prompt(schema_dict: Any) -> str:
+    return "Return ONLY valid JSON (no markdown). Match this JSON Schema exactly: " + str(schema_dict)
+
+
+def _parse_into_schema(text: str, schema_type: Any) -> Any:
+    obj = parse_json(text)
+    return coerce_dataclass(schema_type, obj) if schema_type else obj
+
+
+def _repair_turn(bad_text: str, error: Exception):
+    return [
+        Message.assistant(bad_text),
+        Message.user(
+            f"That response was not valid for the schema ({error}). "
+            "Return ONLY corrected JSON that matches the schema exactly, with no prose."
+        ),
+    ]
 
 
 class Model:
@@ -71,26 +99,26 @@ class Model:
         )
         return self._client.stream(req, tools=self._tools)
 
-    def json(self, prompt: str, *, schema: Any, **overrides: Any) -> Result:
-        if isinstance(schema, dict):
-            schema_dict = schema
-            schema_type = None
-        else:
-            schema_type = schema
-            schema_dict = schema_for(schema)
-
-        sys = "Return ONLY valid JSON (no markdown). Match this JSON Schema exactly: " + str(schema_dict)
-        req = ChatRequest(
-            model=self._model,
-            messages=[Message.system(sys), Message.user(prompt)],
-            temperature=overrides.get("temperature", self._temperature),
-            max_tokens=overrides.get("max_tokens", self._max_tokens),
-            response_format="json_object",
-        )
-        res = self._client.chat(req, tools=self._tools, tool_runtime=self._tool_runtime)
-        obj = parse_json(res.text)
-        res.data = coerce_dataclass(schema_type, obj) if schema_type else obj
-        return res
+    def json(self, prompt: str, *, schema: Any, repair: int = 0, **overrides: Any) -> Result:
+        schema_dict, schema_type = _json_schema_parts(schema)
+        messages = [Message.system(_json_system_prompt(schema_dict)), Message.user(prompt)]
+        for attempt in range(repair + 1):
+            req = ChatRequest(
+                model=self._model,
+                messages=list(messages),
+                temperature=overrides.get("temperature", self._temperature),
+                max_tokens=overrides.get("max_tokens", self._max_tokens),
+                response_format="json_object",
+            )
+            res = self._client.chat(req, tools=self._tools, tool_runtime=self._tool_runtime)
+            try:
+                res.data = _parse_into_schema(res.text, schema_type)
+                return res
+            except Exception as e:
+                if attempt >= repair:
+                    raise
+                messages = messages + _repair_turn(res.text, e)
+        raise SchemaError("unreachable")  # pragma: no cover
 
 
 class AsyncModel:
@@ -150,26 +178,26 @@ class AsyncModel:
         async for ev in self._client.astream(req, tools=self._tools):
             yield ev
 
-    async def json(self, prompt: str, *, schema: Any, **overrides: Any) -> Result:
-        if isinstance(schema, dict):
-            schema_dict = schema
-            schema_type = None
-        else:
-            schema_type = schema
-            schema_dict = schema_for(schema)
-
-        sys = "Return ONLY valid JSON (no markdown). Match this JSON Schema exactly: " + str(schema_dict)
-        req = ChatRequest(
-            model=self._model,
-            messages=[Message.system(sys), Message.user(prompt)],
-            temperature=overrides.get("temperature", self._temperature),
-            max_tokens=overrides.get("max_tokens", self._max_tokens),
-            response_format="json_object",
-        )
-        res = await self._client.achat(req, tools=self._tools, tool_runtime=self._tool_runtime)
-        obj = parse_json(res.text)
-        res.data = coerce_dataclass(schema_type, obj) if schema_type else obj
-        return res
+    async def json(self, prompt: str, *, schema: Any, repair: int = 0, **overrides: Any) -> Result:
+        schema_dict, schema_type = _json_schema_parts(schema)
+        messages = [Message.system(_json_system_prompt(schema_dict)), Message.user(prompt)]
+        for attempt in range(repair + 1):
+            req = ChatRequest(
+                model=self._model,
+                messages=list(messages),
+                temperature=overrides.get("temperature", self._temperature),
+                max_tokens=overrides.get("max_tokens", self._max_tokens),
+                response_format="json_object",
+            )
+            res = await self._client.achat(req, tools=self._tools, tool_runtime=self._tool_runtime)
+            try:
+                res.data = _parse_into_schema(res.text, schema_type)
+                return res
+            except Exception as e:
+                if attempt >= repair:
+                    raise
+                messages = messages + _repair_turn(res.text, e)
+        raise SchemaError("unreachable")  # pragma: no cover
 
 
 def llm(model: str, **kwargs: Any) -> Model:

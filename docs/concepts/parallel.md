@@ -27,14 +27,22 @@ you actually want several models at once.
 | --- | --- | --- | --- |
 | `all` (default) | Run every model; return every result | `None` | `None` |
 | `race` | Return the first successful result; abandon the rest | winner's text | first success |
+| `compare` | Run all; build a readable side-by-side of every answer | comparison | `None` |
+| `judge` | Run all candidates, then a judge model picks/merges the best | judged answer | the judge's result |
 
 ```python
-# Compare every model:
-parallel(models)("...")                      # mode="all"
+# Compare every model side by side:
+parallel(models, mode="compare")("...")      # text is a readable comparison
 
-# Lowest-latency answer:
-parallel(models, mode="race")("...")         # returns as soon as one succeeds
+# Let a judge model pick or synthesize the best answer:
+res = parallel(models, mode="judge", judge="openai:gpt-4.1-mini")("...")
+print(res.text)            # the judge's final answer
+print(res.candidates)      # every model's original answer (== res.results)
+print(res.winner.model)    # the judge model
 ```
+
+In `judge` mode the underlying candidates are always preserved in `res.results` (also
+available as `res.candidates`) — the judge never hides the disagreement it resolved.
 
 Extra keyword arguments are forwarded to each underlying model, e.g.
 `parallel(models, temperature=0.2, timeout=30)`.
@@ -79,8 +87,8 @@ is always explicit and never a default. In `all` mode the call waits for the slo
 model; in `race` mode it returns as soon as the first model succeeds (slower calls are
 abandoned, though already-running HTTP requests finish in the background).
 
-## Not in v1
+## Not yet
 
-By design, the first version is deliberately small: no tools, no streaming, and no
-`judge` / `compare` / `consensus` / `majority` modes. Those are planned as later,
-additive features and will always expose the underlying candidates when they arrive.
+Parallel calls don't run tools or stream, and `consensus` / `majority` voting modes
+aren't implemented yet. As with `judge`, any future aggregating mode will always expose
+the underlying candidates rather than hide them.
