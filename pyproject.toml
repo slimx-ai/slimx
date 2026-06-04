@@ -1,6 +1,6 @@
 [project]
 name = "slimx"
-version = "0.11.0"
+version = "1.0.0"
 description = "A slim, intuitive, lightweight Python library for calling LLMs (high-level + low-level) with multi-provider support."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,7 +12,7 @@ dependencies = [
 ]
 
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Developers",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.10",

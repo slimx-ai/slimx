@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.0.0 (2026-06-04)
+
+First stable release. The public API and the Provider Contract are now covered by
+semantic versioning — breaking changes will only land in a new major version.
+
+### Changed
+- Marked **Production/Stable** and committed to semver for the public surface (top-level
+  exports + `slimx.low` + the conformance-tested Provider Contract).
+- Shipped a PEP 561 `py.typed` marker so downstream type checkers see SlimX's types.
+
+The 0.7–0.11 line built up to this: bug-fixed core, Anthropic tools, provider conformance
+suite + capability introspection, the Gemini `thoughtSignature` fix, parallel/ensemble
+execution (all/race/compare/judge), full inspectability (inspect mode, trace hooks,
+reproducible call records), the `slimx` CLI + model discovery, and structured-output
+repair. See the entries below for details.
+
 ## v0.11.0 (2026-06-04)
 
 ### Added

@@ -1,4 +1,4 @@
-# SlimX (`slimx`) — v0.11.0
+# SlimX (`slimx`) — v1.0.0
 
 SlimX is a tiny, inspectable LLM runtime for building vendor-neutral AI software across cloud and local models.
 
@@ -397,6 +397,21 @@ SlimX supports third-party provider plugins through the `slimx.providers` entry 
 Built-in providers are registered lazily, so importing `slimx` does not load provider modules or require API keys.
 
 ---
+
+## Stability
+
+As of **1.0**, SlimX commits to semantic versioning. The public API is stable:
+
+- the top-level surface (`llm`, `allm`, `Model`, `AsyncModel`, `tool`, `Message`,
+  `Result`, `StreamEvent`, `ToolCall`, `Usage`, `InspectedRequest`, `CallRecord`,
+  `parallel`, `list_models`, `describe_provider`, and `slimx.low`'s `Client` /
+  `ChatRequest`),
+- the **Provider Contract** that every provider implements (see
+  [`DEVELOPMENT.md`](DEVELOPMENT.md)), which is enforced by the conformance suite in
+  `tests/conformance/`.
+
+Breaking changes to these will only land in a new major version. The package ships type
+information (PEP 561), so type checkers see SlimX's types out of the box.
 
 ## Troubleshooting
 
