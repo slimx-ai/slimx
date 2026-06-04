@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.10.0 (2026-06-04)
+
+### Added — CLI & model discovery
+- **`slimx` command-line tool** (no extra dependencies):
+  - `slimx doctor [provider] [--probe]` — report which keys/base URLs are configured,
+    probe local servers (ollama, oai) and list their models; `--probe` also checks cloud
+    providers. The fast answer to "why isn't my model working?".
+  - `slimx models <provider>` — list the models a provider/server exposes.
+  - `slimx providers` — registered providers with capabilities.
+  - `slimx version`.
+- **Model discovery in code:** `list_models(provider, **kwargs)` (top-level), backed by
+  `Provider.list_models()` — implemented for `openai`/`oai` (`/models`) and `ollama`
+  (`/api/tags`). `describe_provider` is now exported at the top level too.
+
 ## v0.9.0 (2026-06-04)
 
 ### Added — inspectability

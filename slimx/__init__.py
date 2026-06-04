@@ -17,7 +17,7 @@ from __future__ import annotations
 from importlib import import_module
 from typing import Any, TYPE_CHECKING
 
-__version__ = "0.9.0"
+__version__ = "0.10.0"
 
 _LAZY: dict[str, tuple[str, str]] = {
     # High-level
@@ -52,6 +52,8 @@ _LAZY: dict[str, tuple[str, str]] = {
     # Providers
     "get_provider": ("slimx.providers.registry", "get_provider"),
     "list_providers": ("slimx.providers.registry", "list_providers"),
+    "describe_provider": ("slimx.providers.registry", "describe_provider"),
+    "list_models": ("slimx.discovery", "list_models"),
 }
 
 __all__ = [
@@ -87,6 +89,8 @@ __all__ = [
     # Providers
     "get_provider",
     "list_providers",
+    "describe_provider",
+    "list_models",
 
     "__version__",
 ]
@@ -99,7 +103,8 @@ if TYPE_CHECKING:
     from slimx.low.types import ChatRequest
     from slimx.messages import Message
     from slimx._parallel import Parallel, ParallelItem, ParallelResult, parallel
-    from slimx.providers.registry import get_provider, list_providers
+    from slimx.discovery import list_models
+    from slimx.providers.registry import describe_provider, get_provider, list_providers
     from slimx.record import CallRecord
     from slimx.tooling import ToolSpec, tool
     from slimx.types import InspectedRequest, Result, StreamEvent, ToolCall, Usage

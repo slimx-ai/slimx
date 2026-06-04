@@ -1,4 +1,4 @@
-# SlimX (`slimx`) — v0.9.0
+# SlimX (`slimx`) — v0.10.0
 
 SlimX is a tiny, inspectable LLM runtime for building vendor-neutral AI software across cloud and local models.
 
@@ -345,6 +345,22 @@ CallRecord.load("run.json")
 ```
 
 See [docs: Inspectability](docs/concepts/inspectability.md).
+
+---
+
+## CLI & model discovery
+
+Installing SlimX adds a `slimx` command (no extra dependencies):
+
+```bash
+slimx doctor              # which keys/servers are configured and reachable
+slimx models ollama       # list models a provider exposes (no guessing model strings)
+slimx providers           # registered providers + capabilities
+```
+
+`slimx doctor` is the fastest way to answer "why isn't my model working?" — usually a
+missing key or wrong base URL. The same discovery is available in code via
+`list_models(...)`. See [docs: CLI & discovery](docs/concepts/cli.md).
 
 ---
 

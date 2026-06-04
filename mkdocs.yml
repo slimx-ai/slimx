@@ -36,6 +36,7 @@ nav:
       - Streaming: concepts/streaming.md
       - Parallel Execution: concepts/parallel.md
       - Inspectability: concepts/inspectability.md
+      - CLI & Discovery: concepts/cli.md
       - Structured Output: concepts/structured_output.md
       - SlimX-RAG Integration: concepts/slimx-rag.md
       - Plugins: concepts/plugins.md

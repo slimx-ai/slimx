@@ -23,6 +23,15 @@ class OllamaProvider(Provider):
     def from_env(cls):
         return cls(os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434"))
 
+    def list_models(self, *, timeout: Optional[float] = None) -> list:
+        url = f"{self.base_url}/api/tags"
+        with httpx.Client(timeout=_timeout(timeout)) as client:
+            response = client.get(url)
+        if response.status_code >= 400:
+            raise ProviderError(f"Ollama error {response.status_code}: {_read_response_text(response)}")
+        data = response.json()
+        return [m.get("name") for m in (data.get("models") or []) if m.get("name")]
+
     def build_request(self, req, *, tools: Sequence[ToolSpec] = (), stream: bool = False):
         return InspectedRequest(
             provider=self.name,

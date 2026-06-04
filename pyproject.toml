@@ -1,6 +1,6 @@
 [project]
 name = "slimx"
-version = "0.9.0"
+version = "0.10.0"
 description = "A slim, intuitive, lightweight Python library for calling LLMs (high-level + low-level) with multi-provider support."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -36,6 +36,9 @@ dev = [
   "build>=1.2.0",
   "twine>=5.0.0",
 ]
+
+[project.scripts]
+slimx = "slimx.cli:main"
 
 [project.entry-points."slimx.providers"]
 # Third-party providers should register here.

@@ -67,3 +67,8 @@ class Provider(ABC):
         stream: bool=False,
     ) -> InspectedRequest:
         raise NotImplementedError("Request inspection not implemented for this provider")
+
+    # Model discovery: list model ids/names the provider/server exposes.
+    # Optional; makes a network call. Providers that support it return a list of str.
+    def list_models(self, *, timeout: Optional[float]=None) -> list:
+        raise NotImplementedError("Model discovery not implemented for this provider")

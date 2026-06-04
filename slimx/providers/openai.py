@@ -37,6 +37,14 @@ class OpenAIProvider(Provider):
     def _headers(self) -> Dict[str, str]:
         return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
 
+    def list_models(self, *, timeout: Optional[float] = None) -> list:
+        url = f"{self.base_url}/models"
+        with httpx.Client(timeout=timeout or 10.0) as c:
+            r = c.get(url, headers=self._headers())
+        raise_for_status(r.status_code, r.text)
+        data = r.json()
+        return [m.get("id") for m in (data.get("data") or []) if m.get("id")]
+
     def build_request(self, req, *, tools: Sequence[ToolSpec] = (), stream: bool = False):
         return InspectedRequest(
             provider=self.name,
