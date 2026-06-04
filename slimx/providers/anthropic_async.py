@@ -1,6 +1,7 @@
 # slimx/providers/anthropic_async.py
 from __future__ import annotations
 
+import json
 import os
 from typing import Dict, Optional, Sequence
 
@@ -9,9 +10,11 @@ import httpx
 from ..errors import ProviderAuthError
 from ..tooling import ToolSpec
 from ..types import InspectedRequest, Result, StreamEvent, redact_headers
+from ..utils.sse_async import aiter_sse_data
 from .anthropic import (
     DEFAULT_ANTHROPIC_BASE_URL,
     DEFAULT_ANTHROPIC_VERSION,
+    _StreamDecoder,
     _build_payload,
     _parse_response,
     _raise_for_status,
@@ -21,7 +24,9 @@ from .base import Provider, ProviderCapabilities
 
 class AnthropicAsyncProvider(Provider):
     name = "anthropic"
-    capabilities = ProviderCapabilities(tools=True, structured_output=False, async_chat=True)
+    capabilities = ProviderCapabilities(
+        tools=True, structured_output=False, async_chat=True, async_streaming=True
+    )
 
     def __init__(
         self,
@@ -57,7 +62,7 @@ class AnthropicAsyncProvider(Provider):
             method="POST",
             url=f"{self.base_url}/v1/messages",
             headers=redact_headers(self._headers()),
-            payload=_build_payload(req, tools),
+            payload=_build_payload(req, tools, stream=stream),
         )
 
     def chat(self, req, *, tools: Sequence[ToolSpec] = (), timeout: Optional[float] = None):
@@ -77,8 +82,21 @@ class AnthropicAsyncProvider(Provider):
         return _parse_response(r.json())
 
     async def astream(self, req, *, tools: Sequence[ToolSpec] = (), timeout: Optional[float] = None):
-        res = await self.achat(req, tools=tools, timeout=timeout)
-        yield StreamEvent(type="text_delta", text=res.text, raw=res.raw)
-        for tc in res.tool_calls:
-            yield StreamEvent.tool(tc, raw=res.raw)
-        yield StreamEvent(type="done")
+        payload = _build_payload(req, tools, stream=True)
+        url = f"{self.base_url}/v1/messages"
+        decoder = _StreamDecoder()
+        async with httpx.AsyncClient(timeout=timeout or 30.0) as c:
+            async with c.stream("POST", url, headers=self._headers(), json=payload) as r:
+                if r.status_code >= 400:
+                    body = (await r.aread()).decode("utf-8", errors="replace")
+                    _raise_for_status(r.status_code, body)
+                async for chunk in aiter_sse_data(r.aiter_bytes()):
+                    try:
+                        obj = json.loads(chunk)
+                    except Exception:
+                        continue
+                    for event in decoder.feed(obj):
+                        yield event
+                    if _StreamDecoder.is_done(obj):
+                        break
+        yield StreamEvent.done()

@@ -57,6 +57,11 @@ def make_client(response, *, is_async=False):
             captured["json"] = json
             return response
 
+        def get(self, url, *, headers):
+            captured["url"] = url
+            captured["headers"] = headers
+            return response
+
         async def apost(self, url, *, headers, json):
             return self.post(url, headers=headers, json=json)
 
@@ -224,3 +229,155 @@ def test_anthropic_async_chat_parses_tool_use(monkeypatch):
 
     assert result.tool_calls[0].name == "add"
     assert result.tool_calls[0].arguments == {"a": 1, "b": 1}
+
+
+# --------------------------------------------------------------------------
+# Native streaming, extra passthrough, model discovery
+# --------------------------------------------------------------------------
+
+class FakeStreamResponse:
+    def __init__(self, status_code=200, chunks=None, body=b""):
+        self.status_code = status_code
+        self._chunks = chunks or []
+        self._body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return None
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return None
+
+    def iter_bytes(self):
+        yield from self._chunks
+
+    async def aiter_bytes(self):
+        for c in self._chunks:
+            yield c
+
+    def read(self):
+        return self._body
+
+    async def aread(self):
+        return self._body
+
+
+def make_stream_client(response):
+    class _Client:
+        def __init__(self, *, timeout=None):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+        def stream(self, method, url, *, headers, json):
+            captured["json"] = json
+            captured["url"] = url
+            return response
+
+    return _Client
+
+
+def _sse(*events):
+    out = b""
+    for obj in events:
+        import json as _json
+        out += b"event: " + obj["type"].encode() + b"\ndata: " + _json.dumps(obj).encode() + b"\n\n"
+    return [out]
+
+
+_STREAM = _sse(
+    {"type": "message_start", "message": {}},
+    {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}},
+    {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Hel"}},
+    {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "lo"}},
+    {"type": "content_block_stop", "index": 0},
+    {"type": "content_block_start", "index": 1,
+     "content_block": {"type": "tool_use", "id": "toolu_1", "name": "add", "input": {}}},
+    {"type": "content_block_delta", "index": 1, "delta": {"type": "input_json_delta", "partial_json": '{"a":'}},
+    {"type": "content_block_delta", "index": 1, "delta": {"type": "input_json_delta", "partial_json": '2,"b":3}'}},
+    {"type": "content_block_stop", "index": 1},
+    {"type": "message_stop"},
+)
+
+
+def test_anthropic_streams_text_and_tool_use(monkeypatch):
+    monkeypatch.setattr(
+        "slimx.providers.anthropic.httpx.Client", make_stream_client(FakeStreamResponse(chunks=_STREAM))
+    )
+    provider = AnthropicProvider(api_key="k")
+    events = list(provider.stream(ChatRequest(model="claude-x", messages=[Message.user("hi")]), tools=[add]))
+
+    assert "".join(e.text or "" for e in events if e.type == "text_delta") == "Hello"
+    tool_events = [e for e in events if e.type == "tool_call"]
+    assert len(tool_events) == 1
+    call = tool_events[0].tool_call
+    assert call is not None
+    assert call.id == "toolu_1" and call.name == "add" and call.arguments == {"a": 2, "b": 3}
+    assert events[-1].type == "done"
+    assert captured["json"]["stream"] is True
+
+
+def test_anthropic_async_streams(monkeypatch):
+    monkeypatch.setattr(
+        "slimx.providers.anthropic_async.httpx.AsyncClient",
+        make_stream_client(FakeStreamResponse(chunks=_STREAM)),
+    )
+    provider = AnthropicAsyncProvider(api_key="k")
+
+    async def collect():
+        return [e async for e in provider.astream(ChatRequest(model="claude-x", messages=[Message.user("hi")]))]
+
+    events = asyncio.run(collect())
+    assert "".join(e.text or "" for e in events if e.type == "text_delta") == "Hello"
+    assert events[-1].type == "done"
+
+
+def test_anthropic_extra_passes_through_to_payload(monkeypatch):
+    response = FakeResponse(data={"content": [{"type": "text", "text": "ok"}]})
+    monkeypatch.setattr("slimx.providers.anthropic.httpx.Client", make_client(response))
+
+    provider = AnthropicProvider(api_key="k")
+    provider.chat(
+        ChatRequest(
+            model="claude-x",
+            messages=[Message.user("hi")],
+            extra={"top_p": 0.9, "stop_sequences": ["STOP"], "tool_choice": {"type": "auto"}},
+        )
+    )
+    body = captured["json"]
+    assert body["top_p"] == 0.9
+    assert body["stop_sequences"] == ["STOP"]
+    assert body["tool_choice"] == {"type": "auto"}
+
+
+def test_anthropic_list_models(monkeypatch):
+    response = FakeResponse(
+        data={"data": [{"id": "claude-haiku-4-5"}, {"id": "claude-sonnet-4-6"}, {}]}
+    )
+    monkeypatch.setattr("slimx.providers.anthropic.httpx.Client", make_client(response))
+
+    provider = AnthropicProvider(api_key="k")
+    assert provider.list_models() == ["claude-haiku-4-5", "claude-sonnet-4-6"]
+    assert captured["url"].endswith("/v1/models")
+
+
+def test_anthropic_capabilities_now_advertise_streaming():
+    from slimx.providers import describe_provider
+
+    assert describe_provider("anthropic")["streaming"] is True
+    assert describe_provider("anthropic", async_mode=True)["async_streaming"] is True

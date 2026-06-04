@@ -83,7 +83,15 @@ def _success_response(name: str, request: httpx.Request) -> httpx.Response:
             },
         )
     if name == "anthropic":
-        # Anthropic streaming is emulated via chat(); same endpoint either way.
+        body = json.loads(request.content or b"{}")
+        if body.get("stream"):
+            sse = (
+                b'event: content_block_delta\n'
+                b'data: {"type":"content_block_delta","index":0,'
+                b'"delta":{"type":"text_delta","text":"hello"}}\n\n'
+                b'event: message_stop\ndata: {"type":"message_stop"}\n\n'
+            )
+            return httpx.Response(200, content=sse, headers={"content-type": "text/event-stream"})
         return httpx.Response(
             200,
             json={

@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.1.0 (2026-06-04)
+
+### Added — Anthropic provider
+- **Native token streaming** (sync + async): real Server-Sent-Events parsing of the
+  Messages API — incremental `text_delta`s and streamed `tool_use` calls (reassembled
+  from `input_json_delta` fragments) — replacing the previous single-shot wrapper.
+  `capabilities.streaming` / `async_streaming` are now `True`.
+- **`extra` passthrough**: Anthropic-specific request fields (`top_p`, `stop_sequences`,
+  `tool_choice`, `metadata`, prompt caching, beta fields, …) flow through
+  `ChatRequest.extra`.
+- **Model discovery**: `AnthropicProvider.list_models()` (via `/v1/models`), so
+  `slimx models anthropic` / `slimx doctor` work for Anthropic.
+- Request inspection reflects the stream flag for Anthropic.
+
 ## v1.0.0 (2026-06-04)
 
 First stable release. The public API and the Provider Contract are now covered by

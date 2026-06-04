@@ -107,7 +107,7 @@ uv run pytest -q
 | OpenAI        |    `openai:` | `OPENAI_API_KEY`                     | Default provider when no prefix is given         |
 | OpenAI-compatible | `oai:` | OpenAI-compatible `/v1/chat/completions` API | vLLM, LM Studio, llama.cpp server, LocalAI, Ollama `/v1`, internal gateways |
 | Google Gemini |    `google:` | `GOOGLE_API_KEY` or `GEMINI_API_KEY` | Supports chat, streaming, JSON output, and tools |
-| Anthropic     | `anthropic:` | `ANTHROPIC_API_KEY`                  | Claude Messages API; supports chat, JSON output, and tools |
+| Anthropic     | `anthropic:` | `ANTHROPIC_API_KEY`                  | Claude Messages API; chat, tools, and native streaming     |
 | Ollama        |    `ollama:` | optional `OLLAMA_BASE_URL`           | Local models through Ollama                      |
 
 ---

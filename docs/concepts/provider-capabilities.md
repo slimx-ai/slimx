@@ -50,13 +50,14 @@ of a confusing provider error at call time.
 | --- | :---: | :---: | :---: | :---: |
 | `openai` / `oai` | ✅ | ✅ | ✅ | ✅ |
 | `google` | ✅ | ✅ | ✅ | ✅ |
-| `anthropic` | ✅ | — | wrapper¹ | chat only |
+| `anthropic` | ✅ | —¹ | ✅ | ✅ |
 | `ollama` | — | — | ✅ | ✅ |
 
-¹ Anthropic chat and tool calling are fully supported. Native token streaming is
-not yet implemented; `stream()` is a compatibility wrapper that emits the
-complete result as a single `text_delta` followed by `done`, so streaming code
-still works against Anthropic without special-casing.
+¹ Anthropic supports chat, tools, and native token streaming (sync and async, including
+streamed tool calls). It has no dedicated JSON response-format mode, so `structured_output`
+is `False` — `.json(...)` still works against Anthropic via prompting (and `repair=`).
+Anthropic-specific request fields (`top_p`, `stop_sequences`, `tool_choice`, `metadata`,
+prompt caching, …) flow through `ChatRequest.extra`.
 
 These flags are enforced by the conformance suite (`tests/conformance/`): a
 provider is only exercised for a capability it declares, and any provider that

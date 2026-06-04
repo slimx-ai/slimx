@@ -11,6 +11,7 @@ from ..errors import ProviderAuthError, ProviderError, ProviderRateLimitError
 from ..messages import Message
 from ..tooling import ToolSpec
 from ..types import InspectedRequest, Result, StreamEvent, ToolCall, Usage, redact_headers
+from ..utils.sse import iter_sse_data
 from .base import Provider, ProviderCapabilities
 
 DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com"
@@ -19,7 +20,7 @@ DEFAULT_ANTHROPIC_VERSION = "2023-06-01"
 
 class AnthropicProvider(Provider):
     name = "anthropic"
-    capabilities = ProviderCapabilities(tools=True, structured_output=False, streaming=False)
+    capabilities = ProviderCapabilities(tools=True, structured_output=False, streaming=True)
 
     def __init__(
         self,
@@ -55,8 +56,16 @@ class AnthropicProvider(Provider):
             method="POST",
             url=f"{self.base_url}/v1/messages",
             headers=redact_headers(self._headers()),
-            payload=_build_payload(req, tools),
+            payload=_build_payload(req, tools, stream=stream),
         )
+
+    def list_models(self, *, timeout: Optional[float] = None) -> list:
+        url = f"{self.base_url}/v1/models"
+        with httpx.Client(timeout=timeout or 10.0) as c:
+            r = c.get(url, headers=self._headers())
+        _raise_for_status(r.status_code, r.text)
+        data = r.json()
+        return [m.get("id") for m in (data.get("data") or []) if m.get("id")]
 
     def chat(self, req, *, tools: Sequence[ToolSpec] = (), timeout: Optional[float] = None) -> Result:
         payload = _build_payload(req, tools)
@@ -69,12 +78,24 @@ class AnthropicProvider(Provider):
     def stream(
         self, req, *, tools: Sequence[ToolSpec] = (), timeout: Optional[float] = None
     ) -> Iterable[StreamEvent]:
-        # Native token streaming isn't implemented; emit the full result as one delta.
-        res = self.chat(req, tools=tools, timeout=timeout)
-        yield StreamEvent(type="text_delta", text=res.text, raw=res.raw)
-        for tc in res.tool_calls:
-            yield StreamEvent.tool(tc, raw=res.raw)
-        yield StreamEvent(type="done")
+        payload = _build_payload(req, tools, stream=True)
+        url = f"{self.base_url}/v1/messages"
+        decoder = _StreamDecoder()
+        with httpx.Client(timeout=timeout or 30.0) as c:
+            with c.stream("POST", url, headers=self._headers(), json=payload) as r:
+                if r.status_code >= 400:
+                    body = r.read().decode("utf-8", errors="replace")
+                    _raise_for_status(r.status_code, body)
+                for chunk in iter_sse_data(r.iter_bytes()):
+                    try:
+                        obj = json.loads(chunk)
+                    except Exception:
+                        continue
+                    for event in decoder.feed(obj):
+                        yield event
+                    if _StreamDecoder.is_done(obj):
+                        break
+        yield StreamEvent.done()
 
 
 # --------------------------------------------------------------------------
@@ -88,7 +109,7 @@ def _tools_payload(tools: Sequence[ToolSpec]) -> List[Dict[str, Any]]:
     ]
 
 
-def _build_payload(req, tools: Sequence[ToolSpec]) -> Dict[str, Any]:
+def _build_payload(req, tools: Sequence[ToolSpec], *, stream: bool = False) -> Dict[str, Any]:
     system, messages = _messages_to_anthropic(req.messages)
     payload: Dict[str, Any] = {
         "model": req.model,
@@ -101,7 +122,67 @@ def _build_payload(req, tools: Sequence[ToolSpec]) -> Dict[str, Any]:
         payload["temperature"] = req.temperature
     if tools:
         payload["tools"] = _tools_payload(tools)
+    # Provider-specific escape hatch: top_p, stop_sequences, tool_choice, metadata,
+    # prompt caching, beta fields, etc. flow straight through `req.extra`.
+    if req.extra:
+        for key, value in req.extra.items():
+            payload[key] = value
+    if stream:
+        payload["stream"] = True
     return payload
+
+
+class _StreamDecoder:
+    """Turns Anthropic's Messages SSE events into normalized StreamEvents.
+
+    Text arrives as ``content_block_delta`` / ``text_delta``; tool calls arrive as a
+    ``tool_use`` block whose arguments stream in as ``input_json_delta`` fragments and
+    are emitted as one ToolCall when the block stops.
+    """
+
+    def __init__(self) -> None:
+        self._tool_blocks: Dict[Any, Dict[str, Any]] = {}
+
+    def feed(self, obj: Dict[str, Any]) -> List[StreamEvent]:
+        kind = obj.get("type")
+        if kind == "content_block_start":
+            block = obj.get("content_block") or {}
+            if block.get("type") == "tool_use":
+                self._tool_blocks[obj.get("index")] = {
+                    "id": block.get("id", ""),
+                    "name": block.get("name", ""),
+                    "json": "",
+                }
+            return []
+        if kind == "content_block_delta":
+            delta = obj.get("delta") or {}
+            dtype = delta.get("type")
+            if dtype == "text_delta":
+                text = delta.get("text")
+                return [StreamEvent.text_delta(text, raw=obj)] if text else []
+            if dtype == "input_json_delta":
+                block = self._tool_blocks.get(obj.get("index"))
+                if block is not None:
+                    block["json"] += delta.get("partial_json", "")
+            return []
+        if kind == "content_block_stop":
+            block = self._tool_blocks.pop(obj.get("index"), None)
+            if block is None:
+                return []
+            try:
+                args = json.loads(block["json"] or "{}")
+            except Exception:
+                args = {}
+            call = ToolCall(id=block["id"], name=block["name"], arguments=args)
+            return [StreamEvent.tool(call, raw=obj)]
+        if kind == "error":
+            err = obj.get("error") or {}
+            return [StreamEvent.err(str(err.get("message") or err), raw=obj)]
+        return []
+
+    @staticmethod
+    def is_done(obj: Dict[str, Any]) -> bool:
+        return obj.get("type") == "message_stop"
 
 
 def _messages_to_anthropic(
