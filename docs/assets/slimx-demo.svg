@@ -1,0 +1,43 @@
+<svg width="1000" height="560" viewBox="0 0 1000 560" xmlns="http://www.w3.org/2000/svg" font-family="'SF Mono','Menlo','Consolas',monospace">
+  <rect width="1000" height="560" rx="16" fill="#0B1020"/>
+  <rect x="0" y="0" width="1000" height="48" rx="16" fill="#141B2E"/>
+  <rect x="0" y="30" width="1000" height="18" fill="#141B2E"/>
+  <circle cx="28" cy="24" r="7" fill="#FF5F57"/>
+  <circle cx="52" cy="24" r="7" fill="#FEBC2E"/>
+  <circle cx="76" cy="24" r="7" fill="#28C840"/>
+  <text x="500" y="29" fill="#5F728A" font-size="16" text-anchor="middle">slimx — terminal</text>
+
+  <g font-size="20">
+    <text x="34" y="98"><tspan fill="#2DE2C5">$</tspan> <tspan fill="#E7EEF6">slimx doctor</tspan></text>
+    <text x="34" y="132" fill="#9FB3C8">SlimX 1.0.0  ·  Python 3.11.7</text>
+
+    <text x="34" y="172" fill="#8A99B0">  anthropic  </text>
+    <text x="190" y="172" fill="#C9D4E2">key ANTHROPIC_API_KEY: </text>
+    <text x="470" y="172" fill="#28C840">found</text>
+
+    <text x="34" y="202" fill="#8A99B0">  google     </text>
+    <text x="190" y="202" fill="#C9D4E2">key GOOGLE_API_KEY: </text>
+    <text x="440" y="202" fill="#28C840">found</text>
+
+    <text x="34" y="232" fill="#8A99B0">  ollama     </text>
+    <text x="190" y="232" fill="#28C840">reachable</text>
+    <text x="312" y="232" fill="#C9D4E2">· 3 model(s) — llama3.2:3b, qwen2.5:7b</text>
+
+    <text x="34" y="262" fill="#8A99B0">  oai        </text>
+    <text x="190" y="262" fill="#FEBC2E">not configured</text>
+    <text x="372" y="262" fill="#5F728A">— set SLIMX_OAI_BASE_URL</text>
+
+    <text x="34" y="292" fill="#8A99B0">  openai     </text>
+    <text x="190" y="292" fill="#C9D4E2">key OPENAI_API_KEY: </text>
+    <text x="440" y="292" fill="#28C840">found</text>
+
+    <text x="34" y="346"><tspan fill="#2DE2C5">$</tspan> <tspan fill="#E7EEF6">python -c </tspan><tspan fill="#2DE2C5">"from slimx import llm;</tspan></text>
+    <text x="78" y="374"><tspan fill="#2DE2C5">print(llm('ollama:llama3.2:3b')('hi').text)"</tspan></text>
+    <text x="34" y="408" fill="#C9D4E2">Hello! How can I help you today?</text>
+
+    <text x="34" y="462"><tspan fill="#2DE2C5">$</tspan> <tspan fill="#E7EEF6">slimx models ollama</tspan></text>
+    <text x="34" y="492" fill="#C9D4E2">llama3.2:3b</text>
+    <text x="34" y="518" fill="#C9D4E2">qwen2.5:7b</text>
+    <text x="190" y="518" fill="#2DE2C5">▋</text>
+  </g>
+</svg>

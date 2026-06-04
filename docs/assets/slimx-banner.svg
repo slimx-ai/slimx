@@ -1,0 +1,43 @@
+<svg width="1200" height="340" viewBox="0 0 1200 340" xmlns="http://www.w3.org/2000/svg" font-family="'Helvetica Neue', Arial, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0A0E1A"/>
+      <stop offset="1" stop-color="#0C1326"/>
+    </linearGradient>
+    <linearGradient id="teal" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2DE2C5"/>
+      <stop offset="1" stop-color="#37C9F0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="340" rx="26" fill="url(#bg)"/>
+  <rect x="1" y="1" width="1198" height="338" rx="25" fill="none" stroke="#FFFFFF" stroke-opacity="0.06"/>
+
+  <!-- wordmark -->
+  <text x="72" y="150" font-size="94" font-weight="800" letter-spacing="-2">
+    <tspan fill="#F4F8FB">Slim</tspan><tspan fill="#2DE2C5">X</tspan>
+  </text>
+
+  <!-- tagline -->
+  <text x="76" y="208" fill="#AEBED2" font-size="30" font-weight="500">The LLM runtime you can actually read.</text>
+
+  <!-- pillar chips -->
+  <g font-size="21" font-weight="700">
+    <rect x="76"  y="240" width="104" height="46" rx="23" fill="#2DE2C5" fill-opacity="0.10" stroke="#2DE2C5" stroke-opacity="0.55"/>
+    <text x="128" y="270" fill="#2DE2C5" text-anchor="middle">Tiny</text>
+    <rect x="196" y="240" width="194" height="46" rx="23" fill="#2DE2C5" fill-opacity="0.10" stroke="#2DE2C5" stroke-opacity="0.55"/>
+    <text x="293" y="270" fill="#2DE2C5" text-anchor="middle">Inspectable</text>
+    <rect x="406" y="240" width="232" height="46" rx="23" fill="#2DE2C5" fill-opacity="0.10" stroke="#2DE2C5" stroke-opacity="0.55"/>
+    <text x="522" y="270" fill="#2DE2C5" text-anchor="middle">Vendor-neutral</text>
+  </g>
+
+  <!-- code motif (right) -->
+  <rect x="788" y="86" width="356" height="168" rx="16" fill="#0E1730" stroke="#2DE2C5" stroke-opacity="0.22"/>
+  <g font-family="'SF Mono','Menlo','Consolas',monospace" font-size="22">
+    <text x="814" y="138" fill="#9FB3C8"><tspan fill="#C792EA">from</tspan> slimx <tspan fill="#C792EA">import</tspan> <tspan fill="#82E0FF">llm</tspan></text>
+    <text x="814" y="178" fill="#E7EEF6">m = <tspan fill="#82E0FF">llm</tspan>(<tspan fill="#2DE2C5">"anthropic:claude"</tspan>)</text>
+    <text x="814" y="218" fill="#E7EEF6"><tspan fill="#82E0FF">print</tspan>(m(<tspan fill="#2DE2C5">"Hello"</tspan>).text)</text>
+  </g>
+
+  <rect x="26" y="312" width="1148" height="12" rx="6" fill="url(#teal)"/>
+</svg>

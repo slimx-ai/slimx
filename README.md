@@ -1,13 +1,19 @@
-# SlimX
+<!-- Logo / banner — replace docs/assets/slimx-banner.png with your final artwork -->
+<p align="center">
+  <img src="docs/assets/slimx-banner.png" alt="SlimX — the LLM runtime you can actually read" width="720">
+</p>
 
-[![PyPI](https://img.shields.io/pypi/v/slimx.svg)](https://pypi.org/project/slimx/)
-[![Python](https://img.shields.io/pypi/pyversions/slimx.svg)](https://pypi.org/project/slimx/)
-[![CI](https://github.com/slimx-ai/slimx/actions/workflows/ci.yml/badge.svg)](https://github.com/slimx-ai/slimx/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+<p align="center">
+  <a href="https://pypi.org/project/slimx/"><img src="https://img.shields.io/pypi/v/slimx.svg" alt="PyPI"></a>
+  <a href="https://pypi.org/project/slimx/"><img src="https://img.shields.io/pypi/pyversions/slimx.svg" alt="Python versions"></a>
+  <a href="https://github.com/slimx-ai/slimx/actions/workflows/ci.yml"><img src="https://github.com/slimx-ai/slimx/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+</p>
 
-**The LLM runtime you can actually read.** A tiny, inspectable, vendor-neutral Python
-library for calling LLMs — one API across OpenAI, Anthropic, Gemini, Ollama, and any
-OpenAI-compatible server.
+<p align="center">
+  A tiny, inspectable, vendor-neutral Python library for calling LLMs — one API across
+  OpenAI, Anthropic, Gemini, Ollama, and any OpenAI-compatible server.
+</p>
 
 ```python
 from slimx import llm
@@ -30,6 +36,11 @@ Change the provider by changing the string — the rest of your code stays the s
   or let a judge model pick the best.
 - **Explicit, with batteries** — tools, streaming, structured output with auto-repair, a
   two-layer high/low API, conformance-tested providers, and a `slimx` CLI.
+
+<!-- Demo — swap docs/assets/slimx-demo.png for a recorded GIF (asciinema / terminalizer / vhs) -->
+<p align="center">
+  <img src="docs/assets/slimx-demo.png" alt="slimx doctor diagnosing providers and listing models in a terminal" width="760">
+</p>
 
 ```python
 # See what SlimX would send — exact URL, headers (secrets redacted), body — no network call:
