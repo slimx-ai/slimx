@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.2.0 (2026-06-04)
+
+### Added — Ollama provider
+- **Tool calling** (sync + async): tool definitions are sent to `/api/chat`, returned
+  `message.tool_calls` are parsed into `ToolCall`s (streamed too), and the auto-tool-loop
+  messages are translated to Ollama's shape (`{"function": {...}}` tool calls and
+  `{"role": "tool", "tool_name": …}` results). `capabilities.tools` is now `True`.
+- **Structured output**: `.json(...)` now maps to Ollama's native `format: "json"`;
+  `capabilities.structured_output` is `True`.
+- Shared request/response mapping factored into `ollama.py` and reused by the async
+  provider (no sync/async drift). Tool-call support also surfaces in streaming.
+
+Note: actual tool/JSON behavior depends on the pulled model (e.g. `llama3.2`, `qwen2.5`).
+
 ## v1.1.0 (2026-06-04)
 
 ### Added — Anthropic provider

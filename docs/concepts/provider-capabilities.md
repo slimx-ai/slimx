@@ -51,13 +51,19 @@ of a confusing provider error at call time.
 | `openai` / `oai` | ✅ | ✅ | ✅ | ✅ |
 | `google` | ✅ | ✅ | ✅ | ✅ |
 | `anthropic` | ✅ | —¹ | ✅ | ✅ |
-| `ollama` | — | — | ✅ | ✅ |
+| `ollama` | ✅² | ✅² | ✅ | ✅ |
 
 ¹ Anthropic supports chat, tools, and native token streaming (sync and async, including
 streamed tool calls). It has no dedicated JSON response-format mode, so `structured_output`
 is `False` — `.json(...)` still works against Anthropic via prompting (and `repair=`).
 Anthropic-specific request fields (`top_p`, `stop_sequences`, `tool_choice`, `metadata`,
 prompt caching, …) flow through `ChatRequest.extra`.
+
+² Ollama supports tools and JSON output through `/api/chat` — SlimX sends tool definitions
+and maps `.json(...)` to Ollama's native `format: "json"`. Whether a given call actually
+produces tool calls depends on the **model** you've pulled (e.g. `llama3.2`, `qwen2.5`);
+models without tool support simply answer in text. Ollama options (`num_predict`,
+`keep_alive`, `format`, raw `options`) flow through `ChatRequest.extra`.
 
 These flags are enforced by the conformance suite (`tests/conformance/`): a
 provider is only exercised for a capability it declares, and any provider that

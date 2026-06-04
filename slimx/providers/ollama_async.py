@@ -3,18 +3,21 @@
 import os
 
 import httpx
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, List, Sequence
 
 from ..errors import ProviderError
 from ..tooling import ToolSpec
 from ..types import InspectedRequest, Result, StreamEvent, Usage
 from ..utils.ndjson import aiter_ndjson
 from .base import Provider, ProviderCapabilities
+from .ollama import _parse_tool_calls, _payload, _timeout, _timeout_message
 
 
 class OllamaAsyncProvider(Provider):
     name = "ollama"
     capabilities = ProviderCapabilities(
+        tools=True,
+        structured_output=True,
         streaming=True,
         async_chat=True,
         async_streaming=True,
@@ -39,13 +42,14 @@ class OllamaAsyncProvider(Provider):
             method="POST",
             url=f"{self.base_url}/api/chat",
             headers={"Content-Type": "application/json"},
-            payload=_payload(req, stream=stream),
+            payload=_payload(req, stream=stream, tools=tools),
         )
 
     async def achat(self, req, *, tools: Sequence[ToolSpec] = (), timeout=None):
-        payload = _payload(req, stream=True)
+        payload = _payload(req, stream=True, tools=tools)
         url = f"{self.base_url}/api/chat"
-        text_parts: list[str] = []
+        text_parts: List[str] = []
+        raw_tool_calls: List[Dict[str, Any]] = []
         data: Dict[str, Any] = {}
 
         try:
@@ -57,31 +61,31 @@ class OllamaAsyncProvider(Provider):
 
                     async for obj in aiter_ndjson(response.aiter_bytes()):
                         data = obj
-                        chunk = (obj.get("message") or {}).get("content") or ""
-
+                        message = obj.get("message") or {}
+                        chunk = message.get("content") or ""
                         if chunk:
                             text_parts.append(chunk)
+                        raw_tool_calls.extend(message.get("tool_calls") or [])
 
                         if obj.get("done") is True:
                             break
 
         except httpx.TimeoutException as e:
-            raise ProviderError(
-                f"Ollama request timed out for model {req.model!r} at {url}. "
-                "Try warming the model with `ollama run`, using a smaller model, "
-                "reducing max_tokens/context, or increasing the SlimX timeout."
-            ) from e
+            raise ProviderError(_timeout_message(req.model, url, streaming=False)) from e
 
-        text = "".join(text_parts)
         usage = Usage(
             prompt_tokens=data.get("prompt_eval_count"),
             completion_tokens=data.get("eval_count"),
         )
-
-        return Result(text=text, raw=data, usage=usage)
+        return Result(
+            text="".join(text_parts),
+            raw=data,
+            usage=usage,
+            tool_calls=_parse_tool_calls(raw_tool_calls),
+        )
 
     async def astream(self, req, *, tools: Sequence[ToolSpec] = (), timeout=None):
-        payload = _payload(req, stream=True)
+        payload = _payload(req, stream=True, tools=tools)
         url = f"{self.base_url}/api/chat"
 
         try:
@@ -92,19 +96,18 @@ class OllamaAsyncProvider(Provider):
                         raise ProviderError(f"Ollama error {response.status_code}: {body}")
 
                     async for obj in aiter_ndjson(response.aiter_bytes()):
+                        message = obj.get("message") or {}
+                        chunk = message.get("content") or ""
+                        if chunk:
+                            yield StreamEvent(type="text_delta", text=chunk, raw=obj)
+                        for call in _parse_tool_calls(message.get("tool_calls") or []):
+                            yield StreamEvent.tool(call, raw=obj)
+
                         if obj.get("done") is True:
                             break
 
-                        chunk = (obj.get("message") or {}).get("content") or ""
-                        if chunk:
-                            yield StreamEvent(type="text_delta", text=chunk, raw=obj)
-
         except httpx.TimeoutException as e:
-            raise ProviderError(
-                f"Ollama stream timed out for model {req.model!r} at {url}. "
-                "Try warming the model with `ollama run`, using a smaller model, "
-                "reducing max_tokens/context, or increasing the SlimX timeout."
-            ) from e
+            raise ProviderError(_timeout_message(req.model, url, streaming=True)) from e
 
         yield StreamEvent(type="done")
 
@@ -114,44 +117,3 @@ async def _aread_response_text(response: httpx.Response) -> str:
         return (await response.aread()).decode("utf-8", errors="replace")
     except Exception:
         return ""
-
-
-def _timeout(timeout: Optional[float]) -> httpx.Timeout:
-    if timeout is None:
-        return httpx.Timeout(None, connect=10.0)
-
-    return httpx.Timeout(timeout, connect=min(float(timeout), 10.0))
-
-
-def _payload(req, *, stream: bool) -> Dict[str, Any]:
-    payload: Dict[str, Any] = {
-        "model": req.model,
-        "messages": [
-            message.to_dict()
-            for message in req.messages
-            if message.role in ("user", "assistant", "system")
-        ],
-        "stream": stream,
-    }
-
-    options: Dict[str, Any] = {}
-
-    if req.temperature is not None:
-        options["temperature"] = req.temperature
-
-    if req.max_tokens is not None:
-        options["num_predict"] = req.max_tokens
-
-    if req.extra:
-        extra_options = req.extra.get("options")
-        if isinstance(extra_options, dict):
-            options.update(extra_options)
-
-        for key in ("format", "keep_alive"):
-            if key in req.extra:
-                payload[key] = req.extra[key]
-
-    if options:
-        payload["options"] = options
-
-    return payload
