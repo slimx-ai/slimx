@@ -28,8 +28,13 @@ class OllamaProvider(Provider):
         self.base_url = base_url.rstrip("/")
 
     @classmethod
-    def from_env(cls):
-        return cls(os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434"))
+    def from_env(cls, **overrides):
+        """Build from env (`OLLAMA_BASE_URL`); kwargs win. Single source of truth
+        for Ollama env configuration; the factory delegates here."""
+        base_url = overrides.get("base_url") or os.environ.get(
+            "OLLAMA_BASE_URL", "http://localhost:11434"
+        )
+        return cls(base_url=base_url)
 
     def list_models(self, *, timeout: Optional[float] = None) -> list:
         url = f"{self.base_url}/api/tags"

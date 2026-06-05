@@ -1,4 +1,4 @@
-from typing import Any, Dict, Iterable, Mapping, Optional, Sequence
+from typing import Any, Dict, Iterable, Mapping, Optional, Sequence, Union
 
 from ..messages import Message
 from ..types import Result, StreamEvent
@@ -46,6 +46,26 @@ def _user_message(prompt: str, overrides: Dict[str, Any]) -> Message:
     return Message.user(prompt, **media)
 
 
+# A high-level call accepts either a single prompt string or a full message list.
+PromptInput = Union[str, Sequence[Message]]
+
+
+def _messages_from(prompt: PromptInput, overrides: Dict[str, Any]) -> list:
+    """Normalize a prompt into a message list.
+
+    A `str` becomes a single user message (with any media kwargs attached); a
+    `Sequence[Message]` is used as-is for multi-turn conversations, so callers no
+    longer have to drop to the low-level `ChatRequest` API for history.
+    """
+    if isinstance(prompt, str):
+        return [_user_message(prompt, overrides)]
+    # Explicit message list: media kwargs don't apply — discard so they don't
+    # leak into `overrides` and get mistaken for temperature/max_tokens.
+    for k in _MEDIA_KEYS:
+        overrides.pop(k, None)
+    return list(prompt)
+
+
 def _image_request(model: str, prompt: str, overrides: Dict[str, Any]) -> ImageRequest:
     """Build an ImageRequest, mapping `n`/`size` and routing the rest to `extra`."""
     n = overrides.pop("n", 1)
@@ -91,37 +111,37 @@ class Model:
         """The selected provider's declared capabilities (`ProviderCapabilities`)."""
         return self._client.provider.capabilities
 
-    def inspect(self, prompt: str, *, stream: bool = False, **overrides: Any):
+    def inspect(self, prompt: PromptInput, *, stream: bool = False, **overrides: Any):
         """Dry-run: return the exact request SlimX would send, without sending it."""
         req = ChatRequest(
             model=self._model,
-            messages=[_user_message(prompt, overrides)],
+            messages=_messages_from(prompt, overrides),
             temperature=overrides.get("temperature", self._temperature),
             max_tokens=overrides.get("max_tokens", self._max_tokens),
         )
         return self._client.inspect(req, tools=self._tools, stream=stream)
 
-    def __call__(self, prompt: str, **overrides: Any) -> Result:
+    def __call__(self, prompt: PromptInput, **overrides: Any) -> Result:
         req = ChatRequest(
             model=self._model,
-            messages=[_user_message(prompt, overrides)],
+            messages=_messages_from(prompt, overrides),
             temperature=overrides.get("temperature", self._temperature),
             max_tokens=overrides.get("max_tokens", self._max_tokens),
         )
         return self._client.chat(req, tools=self._tools, tool_runtime=self._tool_runtime)
 
-    def stream(self, prompt: str, **overrides: Any) -> Iterable[StreamEvent]:
+    def stream(self, prompt: PromptInput, **overrides: Any) -> Iterable[StreamEvent]:
         req = ChatRequest(
             model=self._model,
-            messages=[_user_message(prompt, overrides)],
+            messages=_messages_from(prompt, overrides),
             temperature=overrides.get("temperature", self._temperature),
             max_tokens=overrides.get("max_tokens", self._max_tokens),
         )
         return self._client.stream(req, tools=self._tools)
 
-    def json(self, prompt: str, *, schema: Any, repair: int = 0, **overrides: Any) -> Result:
+    def json(self, prompt: PromptInput, *, schema: Any, repair: int = 0, **overrides: Any) -> Result:
         schema_dict, schema_type = _json_schema_parts(schema)
-        messages = [Message.system(_json_system_prompt(schema_dict)), _user_message(prompt, overrides)]
+        messages = [Message.system(_json_system_prompt(schema_dict))] + _messages_from(prompt, overrides)
         for attempt in range(repair + 1):
             req = ChatRequest(
                 model=self._model,
@@ -181,38 +201,38 @@ class AsyncModel:
         """The selected provider's declared capabilities (`ProviderCapabilities`)."""
         return self._client.provider.capabilities
 
-    def inspect(self, prompt: str, *, stream: bool = False, **overrides: Any):
+    def inspect(self, prompt: PromptInput, *, stream: bool = False, **overrides: Any):
         """Dry-run: return the exact request SlimX would send, without sending it."""
         req = ChatRequest(
             model=self._model,
-            messages=[_user_message(prompt, overrides)],
+            messages=_messages_from(prompt, overrides),
             temperature=overrides.get("temperature", self._temperature),
             max_tokens=overrides.get("max_tokens", self._max_tokens),
         )
         return self._client.inspect(req, tools=self._tools, stream=stream)
 
-    async def __call__(self, prompt: str, **overrides: Any) -> Result:
+    async def __call__(self, prompt: PromptInput, **overrides: Any) -> Result:
         req = ChatRequest(
             model=self._model,
-            messages=[_user_message(prompt, overrides)],
+            messages=_messages_from(prompt, overrides),
             temperature=overrides.get("temperature", self._temperature),
             max_tokens=overrides.get("max_tokens", self._max_tokens),
         )
         return await self._client.achat(req, tools=self._tools, tool_runtime=self._tool_runtime)
 
-    async def astream(self, prompt: str, **overrides: Any):
+    async def astream(self, prompt: PromptInput, **overrides: Any):
         req = ChatRequest(
             model=self._model,
-            messages=[_user_message(prompt, overrides)],
+            messages=_messages_from(prompt, overrides),
             temperature=overrides.get("temperature", self._temperature),
             max_tokens=overrides.get("max_tokens", self._max_tokens),
         )
         async for ev in self._client.astream(req, tools=self._tools):
             yield ev
 
-    async def json(self, prompt: str, *, schema: Any, repair: int = 0, **overrides: Any) -> Result:
+    async def json(self, prompt: PromptInput, *, schema: Any, repair: int = 0, **overrides: Any) -> Result:
         schema_dict, schema_type = _json_schema_parts(schema)
-        messages = [Message.system(_json_system_prompt(schema_dict)), _user_message(prompt, overrides)]
+        messages = [Message.system(_json_system_prompt(schema_dict))] + _messages_from(prompt, overrides)
         for attempt in range(repair + 1):
             req = ChatRequest(
                 model=self._model,

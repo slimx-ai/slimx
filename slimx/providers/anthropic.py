@@ -40,14 +40,21 @@ class AnthropicProvider(Provider):
         self.version = version
 
     @classmethod
-    def from_env(cls):
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
+    def from_env(cls, **overrides):
+        """Build from env (`ANTHROPIC_API_KEY`/`_BASE_URL`/`_VERSION`); kwargs win.
+
+        Single source of truth for Anthropic env configuration; the factory in
+        `providers/_defaults.py` delegates here.
+        """
+        api_key = overrides.get("api_key") or os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
             raise ProviderAuthError("ANTHROPIC_API_KEY is not set")
         return cls(
-            api_key,
-            os.environ.get("ANTHROPIC_BASE_URL", DEFAULT_ANTHROPIC_BASE_URL),
-            os.environ.get("ANTHROPIC_VERSION", DEFAULT_ANTHROPIC_VERSION),
+            api_key=api_key,
+            base_url=overrides.get("base_url")
+            or os.environ.get("ANTHROPIC_BASE_URL", DEFAULT_ANTHROPIC_BASE_URL),
+            version=overrides.get("version")
+            or os.environ.get("ANTHROPIC_VERSION", DEFAULT_ANTHROPIC_VERSION),
         )
 
     def _headers(self) -> Dict[str, str]:

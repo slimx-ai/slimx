@@ -38,6 +38,16 @@ Capability matrix: OpenAI — vision, documents, audio_in, image_out; `oai` —
 vision, documents, audio_in; Anthropic — vision, documents; Google — vision,
 documents, audio_in, image_out; Ollama — vision (vision-capable models).
 
+### Improved (code-review follow-ups)
+
+- **Multi-turn input.** `Model`/`AsyncModel` `__call__`, `stream`, `json`, and
+  `inspect` now accept `str | Sequence[Message]`, so conversation history no longer
+  requires dropping to the low-level `ChatRequest` API.
+- **Single source of truth for env config.** `from_env(**overrides)` now reads each
+  provider's env vars (added to Google and `oai`), and the `providers/_defaults.py`
+  factories simply delegate to it — removing the duplicated env handling the factories
+  previously carried.
+
 Note: as with tools, actual behavior depends on the chosen model being
 multimodal (e.g. `gpt-4o`, `gemini-2.5-flash`, `llava`).
 

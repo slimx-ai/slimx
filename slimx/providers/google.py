@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any, Dict, Iterable, Optional, Sequence
 
 import httpx
@@ -55,6 +56,23 @@ class GoogleProvider(Provider):
             raise ProviderAuthError("GOOGLE_API_KEY or GEMINI_API_KEY is not set")
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
+
+    @classmethod
+    def from_env(cls, **overrides):
+        """Build from env (`GOOGLE_API_KEY`/`GEMINI_API_KEY`, `GOOGLE_BASE_URL`);
+        kwargs win. Single source of truth for Google env configuration; the
+        factory in `providers/_defaults.py` delegates here."""
+        api_key = (
+            overrides.get("api_key")
+            or os.environ.get("GOOGLE_API_KEY")
+            or os.environ.get("GEMINI_API_KEY")
+        )
+        if not api_key:
+            raise ProviderAuthError("GOOGLE_API_KEY or GEMINI_API_KEY is not set")
+        base_url = overrides.get("base_url") or os.environ.get(
+            "GOOGLE_BASE_URL", DEFAULT_GOOGLE_BASE_URL
+        )
+        return cls(api_key=api_key, base_url=base_url)
 
     def _headers(self) -> Dict[str, str]:
         return {

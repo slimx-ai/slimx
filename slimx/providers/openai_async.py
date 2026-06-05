@@ -39,12 +39,15 @@ class OpenAIAsyncProvider(Provider):
         self.base_url = base_url.rstrip("/")
 
     @classmethod
-    def from_env(cls):
-        api_key = os.environ.get("OPENAI_API_KEY")
+    def from_env(cls, **overrides):
+        """Build from env vars (`OPENAI_API_KEY`, `OPENAI_BASE_URL`); kwargs win."""
+        api_key = overrides.get("api_key") or os.environ.get("OPENAI_API_KEY")
         if not api_key:
             raise ProviderAuthError("OPENAI_API_KEY is not set")
-        base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
-        return cls(api_key, base_url)
+        base_url = overrides.get("base_url") or os.environ.get(
+            "OPENAI_BASE_URL", "https://api.openai.com/v1"
+        )
+        return cls(api_key=api_key, base_url=base_url)
 
     def _headers(self) -> Dict[str, str]:
         return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
