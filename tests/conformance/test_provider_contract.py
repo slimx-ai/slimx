@@ -18,6 +18,7 @@ from contract import (
     check_chat,
     check_error,
     check_identity,
+    check_modalities,
     check_stream,
     make_transport,
     transport_installed,
@@ -65,6 +66,7 @@ def test_builtin_sync_contract(name):
     build_sync, _ = BUILTINS[name]
     provider = build_sync()
     check_identity(provider)
+    check_modalities(provider)
 
     with transport_installed(make_transport(name)):
         check_chat(provider)
@@ -81,6 +83,7 @@ def test_builtin_async_contract(name):
     provider = build_async()
     caps = provider.capabilities
     check_identity(provider)
+    check_modalities(provider)
 
     async def run():
         with transport_installed(make_transport(name)):

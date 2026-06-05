@@ -63,7 +63,15 @@ class CallRecord:
         )
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        from .content import elide_media
+
+        # Elide large base64 media so records stay small and diffable. This only
+        # affects the serialized view; the live CallRecord keeps the real bytes.
+        d = asdict(self)
+        d["request"] = elide_media(d.get("request"))
+        d["response"] = elide_media(d.get("response"))
+        d["raw"] = elide_media(d.get("raw"))
+        return d
 
     def save(self, path: str) -> None:
         with open(path, "w", encoding="utf-8") as f:

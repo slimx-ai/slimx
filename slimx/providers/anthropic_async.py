@@ -25,7 +25,12 @@ from .base import Provider, ProviderCapabilities
 class AnthropicAsyncProvider(Provider):
     name = "anthropic"
     capabilities = ProviderCapabilities(
-        tools=True, structured_output=False, async_chat=True, async_streaming=True
+        tools=True,
+        structured_output=False,
+        async_chat=True,
+        async_streaming=True,
+        vision=True,
+        documents=True,
     )
 
     def __init__(

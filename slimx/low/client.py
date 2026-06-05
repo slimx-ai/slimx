@@ -1,12 +1,12 @@
 import json
 import time
-from typing import Callable, Iterable, Mapping, Optional, Sequence
+from typing import Callable, Iterable, Mapping, Optional, Sequence, Union
 from ..messages import Message
 from ..types import Result, StreamEvent
 from ..tooling import ToolSpec, execute_tool
 from ..utils.retry import retry, async_retry
 from ..providers.base import Provider
-from .types import ChatRequest
+from .types import ChatRequest, ImageRequest
 
 Hooks = Mapping[str, Callable[[dict], None]]
 
@@ -74,6 +74,41 @@ class Client:
         """Dry-run: return the exact HTTP request the provider would send."""
         return self.provider.build_request(req, tools=tools, stream=stream)
 
+    def inspect_image(self, req: ImageRequest):
+        """Dry-run for image generation: the exact request, without sending it."""
+        return self.provider.build_image_request(req)
+
+    def generate_image(self, req: ImageRequest) -> Result:
+        started = time.perf_counter()
+        snapshot = self._image_snapshot(req)
+        self._fire("before_call", {"phase": "before_call", "provider": self.provider_name, "model": req.model})
+        try:
+            res = retry(lambda: self.provider.generate_image(req, timeout=self.timeout), retries=self.retries)
+            self._attach_trace(res, req=req, started=started, steps=0)
+            res.request = snapshot
+            self._fire("after_call", {**res.trace, "ok": True})
+            return res
+        except Exception as e:
+            self._fire_error(req, started, e)
+            raise
+
+    async def agenerate_image(self, req: ImageRequest) -> Result:
+        started = time.perf_counter()
+        snapshot = self._image_snapshot(req)
+        self._fire("before_call", {"phase": "before_call", "provider": self.provider_name, "model": req.model})
+        try:
+            res = await async_retry(
+                lambda: self.provider.agenerate_image(req, timeout=self.timeout),
+                retries=self.retries,
+            )
+            self._attach_trace(res, req=req, started=started, steps=0)
+            res.request = snapshot
+            self._fire("after_call", {**res.trace, "ok": True})
+            return res
+        except Exception as e:
+            self._fire_error(req, started, e)
+            raise
+
     async def achat(self, req: ChatRequest, *, tools: Sequence[ToolSpec]=(), tool_runtime: str="none", max_steps: int=6) -> Result:
         started = time.perf_counter()
         snapshot = self._request_snapshot(req)
@@ -134,7 +169,7 @@ class Client:
         self._fire("after_call", {**res.trace, "ok": True})
         return res
 
-    def _attach_trace(self, res: Result, *, req: ChatRequest, started: float, steps: int) -> None:
+    def _attach_trace(self, res: Result, *, req: Union[ChatRequest, ImageRequest], started: float, steps: int) -> None:
         res.trace.update({
             "provider": self.provider_name,
             "model": req.model,
@@ -156,6 +191,16 @@ class Client:
             "extra": req.extra,
         }
 
+    def _image_snapshot(self, req: ImageRequest) -> dict:
+        return {
+            "provider": self.provider_name,
+            "model": req.model,
+            "prompt": req.prompt,
+            "n": req.n,
+            "size": req.size,
+            "extra": req.extra,
+        }
+
     def _fire(self, name: str, event: dict) -> None:
         fn = self.hooks.get(name) if self.hooks else None
         if fn is None:
@@ -166,7 +211,7 @@ class Client:
             # A misbehaving hook must never break the underlying call.
             pass
 
-    def _fire_error(self, req: ChatRequest, started: float, exc: BaseException) -> None:
+    def _fire_error(self, req: Union[ChatRequest, ImageRequest], started: float, exc: BaseException) -> None:
         self._fire("after_call", {
             "provider": self.provider_name,
             "model": req.model,

@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from ..errors import ProviderAuthError, ProviderError, ProviderRateLimitError
 from ..tooling import ToolSpec
-from ..types import Result, StreamEvent, ToolCall, Usage
+from ..types import GeneratedImage, Result, StreamEvent, ToolCall, Usage
 
 
 def tools_payload(tools: Sequence[ToolSpec]) -> List[Dict[str, Any]]:
@@ -31,7 +31,18 @@ def tools_payload(tools: Sequence[ToolSpec]) -> List[Dict[str, Any]]:
     ]
 
 
-def build_payload(req, tools: Sequence[ToolSpec], *, stream: bool = False) -> Dict[str, Any]:
+def build_payload(
+    req,
+    tools: Sequence[ToolSpec],
+    *,
+    stream: bool = False,
+    caps: Any = None,
+    provider: str = "openai",
+) -> Dict[str, Any]:
+    if caps is not None:
+        from ..content import guard_modalities
+
+        guard_modalities(req.messages, caps, provider)
     payload = req.to_dict()
     if tools:
         payload["tools"] = tools_payload(tools)
@@ -49,6 +60,33 @@ def raise_for_status(status_code: int, body: str, *, provider: str = "OpenAI") -
         raise ProviderRateLimitError(body)
     if status_code >= 400:
         raise ProviderError(f"{provider} error {status_code}: {body}")
+
+
+def parse_image_response(data: Dict[str, Any]) -> Result:
+    """Parse the OpenAI Images endpoint (`/images/generations`) into a Result.
+
+    Each item carries either inline `b64_json` bytes or a hosted `url`. Usage is
+    left default (the images endpoint reports a different token shape than chat);
+    the full body is preserved on `raw`.
+    """
+    import base64
+
+    images: List[GeneratedImage] = []
+    for item in data.get("data") or []:
+        b64 = item.get("b64_json")
+        url = item.get("url")
+        blob: Optional[bytes] = None
+        if isinstance(b64, str):
+            try:
+                blob = base64.b64decode(b64)
+            except Exception:
+                blob = None
+        mime = item.get("output_format")
+        mime = f"image/{mime}" if isinstance(mime, str) else "image/png"
+        images.append(
+            GeneratedImage(mime_type=mime, data=blob, url=url if blob is None else None)
+        )
+    return Result(text="", raw=data, images=images)
 
 
 def parse_chat_response(data: Dict[str, Any]) -> Result:

@@ -38,6 +38,10 @@ def test_every_default_provider_is_describable():
             "streaming",
             "async_chat",
             "async_streaming",
+            "vision",
+            "documents",
+            "audio_in",
+            "image_out",
         }
 
 

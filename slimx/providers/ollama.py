@@ -6,6 +6,7 @@ import os
 import httpx
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
+from ..content import ImagePart, TextPart, guard_modalities, to_base64
 from ..errors import ProviderError
 from ..messages import Message
 from ..tooling import ToolSpec
@@ -16,7 +17,12 @@ from .base import Provider, ProviderCapabilities
 
 class OllamaProvider(Provider):
     name = "ollama"
-    capabilities = ProviderCapabilities(tools=True, structured_output=True, streaming=True)
+    capabilities = ProviderCapabilities(
+        tools=True,
+        structured_output=True,
+        streaming=True,
+        vision=True,
+    )
 
     def __init__(self, base_url: str = "http://localhost:11434"):
         self.base_url = base_url.rstrip("/")
@@ -165,6 +171,22 @@ def _safe_json_loads(value: Any) -> Any:
         return value
 
 
+def _ollama_user_message(message: Message) -> Dict[str, Any]:
+    """Ollama carries images as a message-level ``images`` array of bare base64
+    strings (no ``data:`` prefix); text stays in ``content``."""
+    text_chunks: List[str] = []
+    images: List[str] = []
+    for p in message.content_parts():
+        if isinstance(p, TextPart):
+            text_chunks.append(p.text)
+        elif isinstance(p, ImagePart):
+            images.append(p.url if (p.url and p.data is None) else to_base64(p.data or b""))
+    msg: Dict[str, Any] = {"role": "user", "content": "".join(text_chunks)}
+    if images:
+        msg["images"] = images
+    return msg
+
+
 def _messages_to_ollama(messages: Sequence[Message]) -> List[Dict[str, Any]]:
     """Convert SlimX messages to Ollama's /api/chat shape.
 
@@ -175,7 +197,10 @@ def _messages_to_ollama(messages: Sequence[Message]) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     for m in messages:
         if m.role in ("system", "user"):
-            out.append({"role": m.role, "content": m.content})
+            if m.role == "user" and m.is_multimodal():
+                out.append(_ollama_user_message(m))
+            else:
+                out.append({"role": m.role, "content": m.content})
         elif m.role == "assistant":
             msg: Dict[str, Any] = {"role": "assistant", "content": m.content or ""}
             tool_calls = []
@@ -216,6 +241,7 @@ def _parse_tool_calls(raw: Sequence[Dict[str, Any]]) -> List[ToolCall]:
 
 
 def _payload(req, *, stream: bool, tools: Sequence[ToolSpec] = ()) -> Dict[str, Any]:
+    guard_modalities(req.messages, OllamaProvider.capabilities, OllamaProvider.name)
     payload: Dict[str, Any] = {
         "model": req.model,
         "messages": _messages_to_ollama(req.messages),

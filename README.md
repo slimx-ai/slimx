@@ -34,8 +34,18 @@ Change the provider by changing the string — the rest of your code stays the s
   the whole thing in an afternoon.
 - **Call many models at once** — `parallel(...)` to compare answers, race for the fastest,
   or let a judge model pick the best.
+- **Multimodal** — attach images, documents, and audio with `image()` / `document()` /
+  `audio()`; SlimX serializes each into the provider's native shape and elides base64 from
+  dry-runs and records. See [`docs/concepts/multimodal.md`](docs/concepts/multimodal.md).
 - **Explicit, with batteries** — tools, streaming, structured output with auto-repair, a
   two-layer high/low API, conformance-tested providers, and a `slimx` CLI.
+
+```python
+from slimx import llm, image
+
+m = llm("anthropic:claude-sonnet-4-6")
+print(m("What's in this picture?", images=[image("diagram.png")]).text)
+```
 
 <!-- Demo — swap docs/assets/slimx-demo.png for a recorded GIF (asciinema / terminalizer / vhs) -->
 <p align="center">

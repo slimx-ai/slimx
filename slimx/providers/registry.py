@@ -46,7 +46,8 @@ def describe_provider(name: str, *, async_mode: bool = False) -> Dict[str, Any]:
     Example:
         >>> describe_provider("google")
         {'name': 'google', 'native': True, 'tools': True, 'structured_output': True,
-         'streaming': True, 'async_chat': False, 'async_streaming': False}
+         'streaming': True, 'async_chat': False, 'async_streaming': False,
+         'vision': True, 'documents': True, 'audio_in': True, 'image_out': True}
     """
     provider = get_provider(
         name,
@@ -63,4 +64,8 @@ def describe_provider(name: str, *, async_mode: bool = False) -> Dict[str, Any]:
         "streaming": caps.streaming,
         "async_chat": caps.async_chat,
         "async_streaming": caps.async_streaming,
+        "vision": caps.vision,
+        "documents": caps.documents,
+        "audio_in": caps.audio_in,
+        "image_out": caps.image_out,
     }

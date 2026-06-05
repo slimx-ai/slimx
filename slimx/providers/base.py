@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import AsyncIterator, Awaitable, Iterable, Optional, Sequence
 from ..tooling import ToolSpec
-from ..low.types import ChatRequest
+from ..low.types import ChatRequest, ImageRequest
 from ..types import InspectedRequest, Result, StreamEvent
 
 @dataclass(frozen=True)
@@ -12,6 +12,11 @@ class ProviderCapabilities:
     streaming: bool = False
     async_chat: bool = False
     async_streaming: bool = False
+    # Multimodal: each flag must be backed by real serialization behavior.
+    vision: bool = False        # image input
+    documents: bool = False     # document (e.g. PDF) input
+    audio_in: bool = False      # audio input
+    image_out: bool = False     # image-generation output
 
 
 class Provider(ABC):
@@ -72,3 +77,18 @@ class Provider(ABC):
     # Optional; makes a network call. Providers that support it return a list of str.
     def list_models(self, *, timeout: Optional[float]=None) -> list:
         raise NotImplementedError("Model discovery not implemented for this provider")
+
+    # Image generation: produce image(s) from a text prompt. Only providers that
+    # declare `capabilities.image_out` implement these; the result carries the
+    # images on `Result.images`.
+    def generate_image(self, req: ImageRequest, *, timeout: Optional[float]=None) -> Result:
+        raise NotImplementedError("Image generation not implemented for this provider")
+
+    def agenerate_image(
+        self, req: ImageRequest, *, timeout: Optional[float]=None
+    ) -> Awaitable[Result]:
+        raise NotImplementedError("Async image generation not implemented for this provider")
+
+    # Dry-run inspection for image generation (optional).
+    def build_image_request(self, req: ImageRequest) -> InspectedRequest:
+        raise NotImplementedError("Image-request inspection not implemented for this provider")

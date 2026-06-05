@@ -17,7 +17,7 @@ from __future__ import annotations
 from importlib import import_module
 from typing import Any, TYPE_CHECKING
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 _LAZY: dict[str, tuple[str, str]] = {
     # High-level
@@ -43,11 +43,22 @@ _LAZY: dict[str, tuple[str, str]] = {
     "Usage": ("slimx.types", "Usage"),
     "ToolCall": ("slimx.types", "ToolCall"),
     "InspectedRequest": ("slimx.types", "InspectedRequest"),
+    "GeneratedImage": ("slimx.types", "GeneratedImage"),
     "CallRecord": ("slimx.record", "CallRecord"),
+
+    # Multimodal content
+    "image": ("slimx.content", "image"),
+    "document": ("slimx.content", "document"),
+    "audio": ("slimx.content", "audio"),
+    "TextPart": ("slimx.content", "TextPart"),
+    "ImagePart": ("slimx.content", "ImagePart"),
+    "DocumentPart": ("slimx.content", "DocumentPart"),
+    "AudioPart": ("slimx.content", "AudioPart"),
 
     # Low-level
     "Client": ("slimx.low.client", "Client"),
     "ChatRequest": ("slimx.low.types", "ChatRequest"),
+    "ImageRequest": ("slimx.low.types", "ImageRequest"),
 
     # Providers
     "get_provider": ("slimx.providers.registry", "get_provider"),
@@ -80,11 +91,22 @@ __all__ = [
     "Usage",
     "ToolCall",
     "InspectedRequest",
+    "GeneratedImage",
     "CallRecord",
+
+    # Multimodal content
+    "image",
+    "document",
+    "audio",
+    "TextPart",
+    "ImagePart",
+    "DocumentPart",
+    "AudioPart",
 
     # Low-level
     "Client",
     "ChatRequest",
+    "ImageRequest",
 
     # Providers
     "get_provider",
@@ -100,14 +122,23 @@ if TYPE_CHECKING:
     # These imports are for type checkers only; runtime is lazy.
     from slimx.high.api import AsyncModel, Model, allm, llm
     from slimx.low.client import Client
-    from slimx.low.types import ChatRequest
+    from slimx.low.types import ChatRequest, ImageRequest
     from slimx.messages import Message
     from slimx._parallel import Parallel, ParallelItem, ParallelResult, parallel
     from slimx.discovery import list_models
     from slimx.providers.registry import describe_provider, get_provider, list_providers
     from slimx.record import CallRecord
     from slimx.tooling import ToolSpec, tool
-    from slimx.types import InspectedRequest, Result, StreamEvent, ToolCall, Usage
+    from slimx.types import GeneratedImage, InspectedRequest, Result, StreamEvent, ToolCall, Usage
+    from slimx.content import (
+        AudioPart,
+        DocumentPart,
+        ImagePart,
+        TextPart,
+        audio,
+        document,
+        image,
+    )
 
 
 def __getattr__(name: str) -> Any:

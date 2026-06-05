@@ -6,11 +6,27 @@ from typing import Any, Dict, Iterable, Optional, Sequence
 
 import httpx
 
+from ..content import (
+    AudioPart,
+    DocumentPart,
+    ImagePart,
+    TextPart,
+    guard_modalities,
+    to_base64,
+)
 from ..errors import ProviderAuthError, ProviderError, ProviderRateLimitError
-from ..low.types import ChatRequest
+from ..low.types import ChatRequest, ImageRequest
 from ..messages import Message
 from ..tooling import ToolSpec
-from ..types import InspectedRequest, Result, StreamEvent, ToolCall, Usage, redact_headers
+from ..types import (
+    GeneratedImage,
+    InspectedRequest,
+    Result,
+    StreamEvent,
+    ToolCall,
+    Usage,
+    redact_headers,
+)
 from ..utils.sse import iter_sse_data
 from .base import Provider, ProviderCapabilities
 
@@ -24,6 +40,10 @@ class GoogleProvider(Provider):
         tools=True,
         structured_output=True,
         streaming=True,
+        vision=True,
+        documents=True,
+        audio_in=True,
+        image_out=True,
     )
 
     def __init__(
@@ -57,6 +77,18 @@ class GoogleProvider(Provider):
             headers=redact_headers(self._headers()),
             payload=_payload(req, tools=tools),
         )
+
+    def generate_image(self, req: ImageRequest, *, timeout: Optional[float] = None) -> Result:
+        # Gemini generates images through `generateContent`; route the prompt
+        # through the normal chat path and let `_parse_response` collect the
+        # returned image parts onto `Result.images`. Image-model knobs (e.g.
+        # `responseModalities`) flow through `ImageRequest.extra`.
+        chat_req = ChatRequest(
+            model=req.model,
+            messages=[Message.user(req.prompt)],
+            extra=req.extra,
+        )
+        return self.chat(chat_req, timeout=timeout)
 
     def chat(
         self,
@@ -118,6 +150,7 @@ def _model_path(model: str) -> str:
 
 
 def _payload(req: ChatRequest, *, tools: Sequence[ToolSpec] = ()) -> Dict[str, Any]:
+    guard_modalities(req.messages, GoogleProvider.capabilities, GoogleProvider.name)
     contents, system_instruction = _contents_from_messages(req.messages)
 
     payload: Dict[str, Any] = {
@@ -144,6 +177,25 @@ def _payload(req: ChatRequest, *, tools: Sequence[ToolSpec] = ()) -> Dict[str, A
     return payload
 
 
+def _gemini_parts(message: Message) -> list[dict[str, Any]]:
+    """Convert a multimodal SlimX message into Gemini `parts`."""
+    parts: list[dict[str, Any]] = []
+    for p in message.content_parts():
+        if isinstance(p, TextPart):
+            parts.append({"text": p.text})
+        elif isinstance(p, (ImagePart, DocumentPart, AudioPart)):
+            if p.url and p.data is None:
+                parts.append({"fileData": {"mimeType": p.mime_type, "fileUri": p.url}})
+            else:
+                parts.append({
+                    "inlineData": {
+                        "mimeType": p.mime_type or "application/octet-stream",
+                        "data": to_base64(p.data or b""),
+                    }
+                })
+    return parts
+
+
 def _contents_from_messages(messages: Sequence[Message]) -> tuple[list[dict[str, Any]], Optional[dict[str, Any]]]:
     contents: list[dict[str, Any]] = []
     system_parts: list[dict[str, str]] = []
@@ -160,12 +212,11 @@ def _contents_from_messages(messages: Sequence[Message]) -> tuple[list[dict[str,
             continue
 
         if message.role == "user":
-            contents.append(
-                {
-                    "role": "user",
-                    "parts": [{"text": message.content}],
-                }
-            )
+            if message.is_multimodal():
+                user_parts = _gemini_parts(message)
+            else:
+                user_parts = [{"text": message.content}]
+            contents.append({"role": "user", "parts": user_parts})
             continue
 
         if message.role == "assistant":
@@ -350,13 +401,38 @@ def _parse_response(data: Dict[str, Any]) -> Result:
     text = "".join(_extract_text_parts(data))
     tool_calls = _extract_tool_calls(data)
     usage = _parse_usage(data)
+    images = _extract_images(data)
 
     return Result(
         text=text,
         raw=data,
         usage=usage,
         tool_calls=tool_calls,
+        images=images,
     )
+
+
+def _extract_images(data: Dict[str, Any]) -> list[GeneratedImage]:
+    """Collect image parts returned by Gemini image-generation models."""
+    import base64
+
+    out: list[GeneratedImage] = []
+    for part in _candidate_parts(data):
+        inline = part.get("inlineData") or part.get("inline_data")
+        if not isinstance(inline, dict):
+            continue
+        mime = inline.get("mimeType") or inline.get("mime_type")
+        raw = inline.get("data")
+        if not (isinstance(mime, str) and mime.startswith("image/")):
+            continue
+        blob: Optional[bytes] = None
+        if isinstance(raw, str):
+            try:
+                blob = base64.b64decode(raw)
+            except Exception:
+                blob = None
+        out.append(GeneratedImage(mime_type=mime, data=blob))
+    return out
 
 
 def _parse_usage(data: Dict[str, Any]) -> Usage:

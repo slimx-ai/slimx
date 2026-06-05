@@ -7,6 +7,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import httpx
 
+from ..content import DocumentPart, ImagePart, TextPart, guard_modalities, to_base64
 from ..errors import ProviderAuthError, ProviderError, ProviderRateLimitError
 from ..messages import Message
 from ..tooling import ToolSpec
@@ -20,7 +21,13 @@ DEFAULT_ANTHROPIC_VERSION = "2023-06-01"
 
 class AnthropicProvider(Provider):
     name = "anthropic"
-    capabilities = ProviderCapabilities(tools=True, structured_output=False, streaming=True)
+    capabilities = ProviderCapabilities(
+        tools=True,
+        structured_output=False,
+        streaming=True,
+        vision=True,
+        documents=True,
+    )
 
     def __init__(
         self,
@@ -110,6 +117,7 @@ def _tools_payload(tools: Sequence[ToolSpec]) -> List[Dict[str, Any]]:
 
 
 def _build_payload(req, tools: Sequence[ToolSpec], *, stream: bool = False) -> Dict[str, Any]:
+    guard_modalities(req.messages, AnthropicProvider.capabilities, AnthropicProvider.name)
     system, messages = _messages_to_anthropic(req.messages)
     payload: Dict[str, Any] = {
         "model": req.model,
@@ -185,6 +193,30 @@ class _StreamDecoder:
         return obj.get("type") == "message_stop"
 
 
+def _media_source(part) -> Dict[str, Any]:
+    """Anthropic image/document `source` object (base64 or url)."""
+    if part.url and part.data is None:
+        return {"type": "url", "url": part.url}
+    return {
+        "type": "base64",
+        "media_type": part.mime_type or "application/octet-stream",
+        "data": to_base64(part.data or b""),
+    }
+
+
+def _anthropic_blocks(message: Message) -> List[Dict[str, Any]]:
+    """Convert a multimodal SlimX message into Anthropic content blocks."""
+    blocks: List[Dict[str, Any]] = []
+    for p in message.content_parts():
+        if isinstance(p, TextPart):
+            blocks.append({"type": "text", "text": p.text})
+        elif isinstance(p, ImagePart):
+            blocks.append({"type": "image", "source": _media_source(p)})
+        elif isinstance(p, DocumentPart):
+            blocks.append({"type": "document", "source": _media_source(p)})
+    return blocks
+
+
 def _messages_to_anthropic(
     messages: Sequence[Message],
 ) -> Tuple[Optional[str], List[Dict[str, Any]]]:
@@ -223,7 +255,10 @@ def _messages_to_anthropic(
         flush_tool_results()
 
         if m.role == "user":
-            out.append({"role": "user", "content": m.content})
+            if m.is_multimodal():
+                out.append({"role": "user", "content": _anthropic_blocks(m)})
+            else:
+                out.append({"role": "user", "content": m.content})
         elif m.role == "assistant":
             blocks: List[Dict[str, Any]] = []
             if m.content:

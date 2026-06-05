@@ -153,6 +153,18 @@ class StreamEvent:
 # Result
 # -------------------------
 
+@dataclass(frozen=True)
+class GeneratedImage:
+    """An image returned by an image-generation model.
+
+    Carried on `Result.images`. Inline bytes live in `data`; some providers
+    instead return a hosted `url`.
+    """
+    mime_type: Optional[str] = None
+    data: Optional[bytes] = None
+    url: Optional[str] = None
+
+
 @dataclass
 class Result:
     """
@@ -175,6 +187,9 @@ class Result:
     # Back-compat; we may later rename this to `parsed` officially.
     data: Any = None
     trace: Dict[str, Any] = field(default_factory=dict)
+
+    # Generated media (image-out). Empty for text/tool responses.
+    images: List[GeneratedImage] = field(default_factory=list)
 
     # A compact snapshot of the originating request, attached by the Client so a
     # Result is self-describing (used by `to_record()`). None for raw provider calls.
@@ -225,8 +240,10 @@ class InspectedRequest:
     def pretty(self) -> str:
         import json
 
+        from .content import elide_media
+
         lines = [f"{self.method} {self.url}", f"# provider: {self.provider}", "# headers:"]
         lines += [f"  {k}: {v}" for k, v in self.headers.items()]
         lines.append("# payload:")
-        lines.append(json.dumps(self.payload, indent=2, ensure_ascii=False, default=str))
+        lines.append(json.dumps(elide_media(self.payload), indent=2, ensure_ascii=False, default=str))
         return "\n".join(lines)

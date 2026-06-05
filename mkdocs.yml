@@ -34,6 +34,7 @@ nav:
       - Provider Capabilities: concepts/provider-capabilities.md
       - Tools: concepts/tools.md
       - Streaming: concepts/streaming.md
+      - Multimodal: concepts/multimodal.md
       - Parallel Execution: concepts/parallel.md
       - Inspectability: concepts/inspectability.md
       - CLI & Discovery: concepts/cli.md

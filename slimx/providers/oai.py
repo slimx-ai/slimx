@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from .openai import OpenAIProvider
 
 
@@ -12,3 +14,6 @@ class OAIProvider(OpenAIProvider):
     """
 
     name = "oai"
+    # OpenAI-compatible servers speak Chat Completions but seldom expose the
+    # separate `/images/generations` endpoint, so image-out is not promised here.
+    capabilities = replace(OpenAIProvider.capabilities, image_out=False)

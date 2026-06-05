@@ -7,7 +7,8 @@ from typing import Optional, Sequence
 import httpx
 
 from ..errors import ProviderAuthError
-from ..low.types import ChatRequest
+from ..low.types import ChatRequest, ImageRequest
+from ..messages import Message
 from ..tooling import ToolSpec
 from ..types import InspectedRequest, Result, StreamEvent, redact_headers
 from ..utils.sse_async import aiter_sse_data
@@ -31,6 +32,10 @@ class GoogleAsyncProvider(Provider):
         streaming=True,
         async_chat=True,
         async_streaming=True,
+        vision=True,
+        documents=True,
+        audio_in=True,
+        image_out=True,
     )
 
     def __init__(
@@ -98,6 +103,14 @@ class GoogleAsyncProvider(Provider):
 
         _raise_for_status(response.status_code, response.text)
         return _parse_response(response.json())
+
+    async def agenerate_image(self, req: ImageRequest, *, timeout: Optional[float] = None) -> Result:
+        chat_req = ChatRequest(
+            model=req.model,
+            messages=[Message.user(req.prompt)],
+            extra=req.extra,
+        )
+        return await self.achat(chat_req, timeout=timeout)
 
     async def astream(
         self,

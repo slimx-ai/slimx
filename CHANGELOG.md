@@ -1,5 +1,46 @@
 # Changelog
 
+## v1.3.0 (2026-06-05)
+
+### Added — Multimodal (input + image output)
+
+- **Content parts.** Messages can now carry non-text `parts` alongside `content`.
+  New `image()`, `document()`, and `audio()` helpers build parts from a path,
+  bytes, file-like object, `data:` URI, or `http(s)://` URL (remote URLs are
+  passed through, not downloaded, unless `fetch=True`). MIME type is inferred
+  from extension or magic bytes. `Message.user(...)` accepts `images=` /
+  `documents=` / `audio=` / `parts=`, and `Message` gains `parts`,
+  `content_parts()`, and `is_multimodal()`.
+- **All four providers serialize natively** (sync + async, shared mapping):
+  OpenAI/`oai` (`image_url` / `file` / `input_audio`), Anthropic (`image` /
+  `document` blocks, base64 or URL source), Google (`inlineData` / `fileData`),
+  Ollama (message-level `images[]` base64 array).
+- **Image-generation output.** New `ImageRequest` and `Model.generate_image()` /
+  `inspect_image()` (sync + async). OpenAI is wired to the Images endpoint
+  (`/images/generations`); Gemini routes through `generateContent`. Results land
+  on `Result.images: list[GeneratedImage]`, and Gemini inline image parts are
+  parsed there during ordinary calls too. `oai` truthfully declares
+  `image_out=False` (compatible servers rarely expose the endpoint).
+- **Truthful capabilities.** `ProviderCapabilities` gains `vision`, `documents`,
+  `audio_in`, `image_out`. Sending an undeclared modality raises the new
+  `UnsupportedModalityError` (a non-transient `ProviderError`) instead of
+  silently dropping media.
+- **Inspect/record stay readable.** `inspect().pretty()` and `CallRecord` elide
+  large base64 blobs to a short placeholder; the request actually sent keeps the
+  real bytes.
+- **Contract + conformance.** Provider Contract clause 8 (multimodal) added;
+  conformance suite's `check_modalities` enforces both directions across every
+  built-in provider, sync and async.
+- High-level API threads `images=` / `documents=` / `audio=` / `parts=` through
+  `__call__`, `stream`, `json`, and `inspect` (and the async mirrors).
+
+Capability matrix: OpenAI — vision, documents, audio_in, image_out; `oai` —
+vision, documents, audio_in; Anthropic — vision, documents; Google — vision,
+documents, audio_in, image_out; Ollama — vision (vision-capable models).
+
+Note: as with tools, actual behavior depends on the chosen model being
+multimodal (e.g. `gpt-4o`, `gemini-2.5-flash`, `llava`).
+
 ## v1.2.0 (2026-06-04)
 
 ### Added — Ollama provider

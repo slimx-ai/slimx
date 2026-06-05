@@ -17,7 +17,10 @@ from contextlib import contextmanager
 import httpx
 import pytest
 
-from slimx.errors import ProviderError
+from slimx.content import audio as _audio
+from slimx.content import document as _document
+from slimx.content import image as _image
+from slimx.errors import ProviderError, UnsupportedModalityError
 from slimx.low.types import ChatRequest
 from slimx.messages import Message
 from slimx.providers.base import Provider, ProviderCapabilities
@@ -221,3 +224,33 @@ def _assert_stream(events: list[StreamEvent]) -> None:
     for e in events:
         if e.type == "text_delta":
             assert isinstance(e.text, str), "text_delta events must carry str text"
+
+
+# ---------------------------------------------------------------------------
+# Multimodal contract (clause 8): declared modalities are honored; undeclared
+# ones raise UnsupportedModalityError rather than silently dropping media.
+# ---------------------------------------------------------------------------
+
+_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
+_PDF = b"%PDF-1.7\n" + b"x" * 16
+_WAV = b"RIFF\x00\x00\x00\x00WAVE" + b"x" * 8
+
+_MODALITY_CASES = (
+    ("vision", "images", lambda: [_image(_PNG, mime_type="image/png")]),
+    ("documents", "documents", lambda: [_document(_PDF, mime_type="application/pdf")]),
+    ("audio_in", "audio", lambda: [_audio(_WAV, mime_type="audio/wav")]),
+)
+
+
+def check_modalities(provider: Provider) -> None:
+    """Assert each declared input modality serializes and each undeclared one is
+    rejected. Uses `build_request` so no network is touched."""
+    caps = provider.capabilities
+    for attr, kw, make in _MODALITY_CASES:
+        req = ChatRequest(model="m", messages=[Message.user("x", **{kw: make()})])
+        if getattr(caps, attr):
+            insp = provider.build_request(req)
+            assert insp.payload, f"{provider.name} declared {attr} but produced no payload"
+        else:
+            with pytest.raises(UnsupportedModalityError):
+                provider.build_request(req)

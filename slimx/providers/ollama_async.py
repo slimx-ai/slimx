@@ -21,6 +21,7 @@ class OllamaAsyncProvider(Provider):
         streaming=True,
         async_chat=True,
         async_streaming=True,
+        vision=True,
     )
 
     def __init__(self, base_url: str = "http://localhost:11434"):
