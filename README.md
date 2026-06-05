@@ -18,7 +18,7 @@
 ```python
 from slimx import llm
 
-m = llm("anthropic:claude-haiku-4-5")
+m = llm("ollama:llama3.2")
 print(m("Hello, world").text)
 ```
 
