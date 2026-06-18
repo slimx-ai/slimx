@@ -1,5 +1,29 @@
 # Changelog
 
+## v1.4.0 (2026-06-18)
+
+### Added — Local hardware awareness & model recommendations
+
+- **`slimx.local` subpackage (opt-in, stdlib-only, no new dependencies).** A small,
+  inspectable layer for local-first GPU/CPU awareness, importable independently of
+  provider code. Importing `slimx` does not import it, and it adds nothing beyond the
+  existing `httpx` dependency (heavy probes shell out lazily).
+  - `hardware.detect()` returns a normalized `HardwareProfile` — OS/arch, CPU RAM, GPUs
+    (vendor, name, VRAM total/free, driver), Docker-GPU availability, and a recommended
+    runtime. Probes `nvidia-smi`, `rocm-smi`, and Apple Silicon; best-effort and never
+    raises (a missing tool yields an empty result).
+  - `engines/` defines an `InferenceEngine` abstraction with an `OllamaEngine` that
+    reports installed/reachable status, lists local models, and exposes per-model runtime
+    placement — fully on GPU, split, or CPU-only — from Ollama's `/api/ps` (`size` vs
+    `size_vram`). It can also stream `/api/pull` progress.
+  - `catalog.py` (bundled `data/local_models.json`) plus `recommend()` bucket local models
+    into `recommended` / `possible` / `not_recommended` for a task, scored on **free** VRAM
+    (with a rough KV-cache estimate and a CPU-offload fallback), each with a plain-English
+    `why`, `estimated_speed`, and `risk`.
+- **CLI.** `slimx doctor --hardware [--json]` adds a local CPU/GPU snapshot and recommended
+  runtime; new `slimx models recommend [--task T] [--json]` and `slimx models local [--json]`.
+  The existing `slimx models <provider>` behaviour is unchanged.
+
 ## v1.3.0 (2026-06-05)
 
 ### Added — Multimodal (input + image output)
