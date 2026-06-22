@@ -17,7 +17,7 @@ from __future__ import annotations
 from importlib import import_module
 from typing import Any, TYPE_CHECKING
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 
 _LAZY: dict[str, tuple[str, str]] = {
     # High-level
@@ -44,6 +44,8 @@ _LAZY: dict[str, tuple[str, str]] = {
     "ToolCall": ("slimx.types", "ToolCall"),
     "InspectedRequest": ("slimx.types", "InspectedRequest"),
     "GeneratedImage": ("slimx.types", "GeneratedImage"),
+    "ImageGenerationOptions": ("slimx.types", "ImageGenerationOptions"),
+    "ImageInput": ("slimx.types", "ImageInput"),
     "CallRecord": ("slimx.record", "CallRecord"),
 
     # Multimodal content
@@ -59,6 +61,7 @@ _LAZY: dict[str, tuple[str, str]] = {
     "Client": ("slimx.low.client", "Client"),
     "ChatRequest": ("slimx.low.types", "ChatRequest"),
     "ImageRequest": ("slimx.low.types", "ImageRequest"),
+    "ImageEditRequest": ("slimx.low.types", "ImageEditRequest"),
 
     # Providers
     "get_provider": ("slimx.providers.registry", "get_provider"),
@@ -92,6 +95,8 @@ __all__ = [
     "ToolCall",
     "InspectedRequest",
     "GeneratedImage",
+    "ImageGenerationOptions",
+    "ImageInput",
     "CallRecord",
 
     # Multimodal content
@@ -107,6 +112,7 @@ __all__ = [
     "Client",
     "ChatRequest",
     "ImageRequest",
+    "ImageEditRequest",
 
     # Providers
     "get_provider",
@@ -122,14 +128,23 @@ if TYPE_CHECKING:
     # These imports are for type checkers only; runtime is lazy.
     from slimx.high.api import AsyncModel, Model, allm, llm
     from slimx.low.client import Client
-    from slimx.low.types import ChatRequest, ImageRequest
+    from slimx.low.types import ChatRequest, ImageEditRequest, ImageRequest
     from slimx.messages import Message
     from slimx._parallel import Parallel, ParallelItem, ParallelResult, parallel
     from slimx.discovery import list_models
     from slimx.providers.registry import describe_provider, get_provider, list_providers
     from slimx.record import CallRecord
     from slimx.tooling import ToolSpec, tool
-    from slimx.types import GeneratedImage, InspectedRequest, Result, StreamEvent, ToolCall, Usage
+    from slimx.types import (
+        GeneratedImage,
+        ImageGenerationOptions,
+        ImageInput,
+        InspectedRequest,
+        Result,
+        StreamEvent,
+        ToolCall,
+        Usage,
+    )
     from slimx.content import (
         AudioPart,
         DocumentPart,

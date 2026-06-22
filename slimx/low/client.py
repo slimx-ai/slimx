@@ -6,7 +6,7 @@ from ..types import Result, StreamEvent
 from ..tooling import ToolSpec, execute_tool
 from ..utils.retry import retry, async_retry
 from ..providers.base import Provider
-from .types import ChatRequest, ImageRequest
+from .types import ChatRequest, ImageEditRequest, ImageRequest
 
 Hooks = Mapping[str, Callable[[dict], None]]
 
@@ -109,6 +109,37 @@ class Client:
             self._fire_error(req, started, e)
             raise
 
+    def edit_image(self, req: ImageEditRequest) -> Result:
+        started = time.perf_counter()
+        snapshot = self._edit_snapshot(req)
+        self._fire("before_call", {"phase": "before_call", "provider": self.provider_name, "model": req.model})
+        try:
+            res = retry(lambda: self.provider.edit_image(req, timeout=self.timeout), retries=self.retries)
+            self._attach_trace(res, req=req, started=started, steps=0)
+            res.request = snapshot
+            self._fire("after_call", {**res.trace, "ok": True})
+            return res
+        except Exception as e:
+            self._fire_error(req, started, e)
+            raise
+
+    async def aedit_image(self, req: ImageEditRequest) -> Result:
+        started = time.perf_counter()
+        snapshot = self._edit_snapshot(req)
+        self._fire("before_call", {"phase": "before_call", "provider": self.provider_name, "model": req.model})
+        try:
+            res = await async_retry(
+                lambda: self.provider.aedit_image(req, timeout=self.timeout),
+                retries=self.retries,
+            )
+            self._attach_trace(res, req=req, started=started, steps=0)
+            res.request = snapshot
+            self._fire("after_call", {**res.trace, "ok": True})
+            return res
+        except Exception as e:
+            self._fire_error(req, started, e)
+            raise
+
     async def achat(self, req: ChatRequest, *, tools: Sequence[ToolSpec]=(), tool_runtime: str="none", max_steps: int=6) -> Result:
         started = time.perf_counter()
         snapshot = self._request_snapshot(req)
@@ -169,7 +200,20 @@ class Client:
         self._fire("after_call", {**res.trace, "ok": True})
         return res
 
-    def _attach_trace(self, res: Result, *, req: Union[ChatRequest, ImageRequest], started: float, steps: int) -> None:
+    def _edit_snapshot(self, req: ImageEditRequest) -> dict:
+        # Never include the source image bytes — only a count, so the snapshot
+        # stays small and inspectable and no base64 leaks into the trace.
+        return {
+            "provider": self.provider_name,
+            "model": req.model,
+            "instruction": req.instruction,
+            "n": req.n,
+            "size": req.size,
+            "image_count": len(req.images or []),
+            "previous_response_id": req.previous_response_id,
+        }
+
+    def _attach_trace(self, res: Result, *, req: Union[ChatRequest, ImageRequest, ImageEditRequest], started: float, steps: int) -> None:
         res.trace.update({
             "provider": self.provider_name,
             "model": req.model,
@@ -211,7 +255,7 @@ class Client:
             # A misbehaving hook must never break the underlying call.
             pass
 
-    def _fire_error(self, req: Union[ChatRequest, ImageRequest], started: float, exc: BaseException) -> None:
+    def _fire_error(self, req: Union[ChatRequest, ImageRequest, ImageEditRequest], started: float, exc: BaseException) -> None:
         self._fire("after_call", {
             "provider": self.provider_name,
             "model": req.model,

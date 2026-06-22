@@ -12,14 +12,15 @@ _LAZY: dict[str, tuple[str, str]] = {
     "Client": ("slimx.low.client", "Client"),
     "ChatRequest": ("slimx.low.types", "ChatRequest"),
     "ImageRequest": ("slimx.low.types", "ImageRequest"),
+    "ImageEditRequest": ("slimx.low.types", "ImageEditRequest"),
 }
 
-__all__ = ["Client", "ChatRequest", "ImageRequest"]
+__all__ = ["Client", "ChatRequest", "ImageRequest", "ImageEditRequest"]
 
 
 if TYPE_CHECKING:
     from .client import Client
-    from .types import ChatRequest, ImageRequest
+    from .types import ChatRequest, ImageEditRequest, ImageRequest
 
 
 def __getattr__(name: str) -> Any:

@@ -182,6 +182,53 @@ def audio(src: Any, *, mime_type: Optional[str] = None, fetch: bool = False) -> 
 # ---------------------------------------------------------------------------
 
 
+def image_dimensions(data: bytes) -> tuple[Optional[int], Optional[int]]:
+    """Best-effort ``(width, height)`` from image header bytes (no external deps).
+
+    Covers PNG, GIF, and the common JPEG and WEBP (VP8/VP8L/VP8X) headers — enough
+    to record dimensions on generated/edited images. Returns ``(None, None)`` when
+    the format is unknown or the header is truncated, so callers must treat the
+    result as optional metadata.
+    """
+    try:
+        if data[:8] == b"\x89PNG\r\n\x1a\n" and data[12:16] == b"IHDR":
+            return int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
+        if data[:6] in (b"GIF87a", b"GIF89a"):
+            return int.from_bytes(data[6:8], "little"), int.from_bytes(data[8:10], "little")
+        if data[:2] == b"\xff\xd8":  # JPEG: scan for a Start-Of-Frame marker
+            i, n = 2, len(data)
+            while i + 9 < n:
+                if data[i] != 0xFF:
+                    i += 1
+                    continue
+                marker = data[i + 1]
+                if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+                    h = int.from_bytes(data[i + 5:i + 7], "big")
+                    w = int.from_bytes(data[i + 7:i + 9], "big")
+                    return w, h
+                seg = int.from_bytes(data[i + 2:i + 4], "big")
+                if seg <= 0:
+                    break
+                i += 2 + seg
+        if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+            fmt = data[12:16]
+            if fmt == b"VP8 ":
+                w = int.from_bytes(data[26:28], "little") & 0x3FFF
+                h = int.from_bytes(data[28:30], "little") & 0x3FFF
+                return w, h
+            if fmt == b"VP8L":
+                b = data[21:25]
+                bits = int.from_bytes(b, "little")
+                return (bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1
+            if fmt == b"VP8X":
+                w = int.from_bytes(data[24:27], "little") + 1
+                h = int.from_bytes(data[27:30], "little") + 1
+                return w, h
+    except Exception:
+        return None, None
+    return None, None
+
+
 def to_base64(data: bytes) -> str:
     return base64.b64encode(data).decode("ascii")
 

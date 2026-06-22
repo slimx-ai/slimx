@@ -42,7 +42,20 @@ def test_every_default_provider_is_describable():
             "documents",
             "audio_in",
             "image_out",
+            "image_in",
+            "image_edit",
+            "hosted_image_tool",
+            "image_partial_streaming",
         }
+
+
+def test_openai_describes_hosted_image_tool_but_oai_does_not():
+    # The hosted Responses image tool is OpenAI-only; generic OpenAI-compatible
+    # servers (oai) must not advertise it.
+    assert describe_provider("openai")["hosted_image_tool"] is True
+    assert describe_provider("openai")["image_edit"] is True
+    assert describe_provider("oai")["hosted_image_tool"] is False
+    assert describe_provider("oai")["image_edit"] is False
 
 
 def test_model_exposes_capabilities(monkeypatch):

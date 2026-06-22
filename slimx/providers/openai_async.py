@@ -5,10 +5,17 @@ from typing import Dict, Optional, Sequence
 import httpx
 
 from ..errors import ProviderAuthError
-from ..low.types import ImageRequest
+from ..low.types import ImageEditRequest, ImageRequest
 from ..tooling import ToolSpec
 from ..types import InspectedRequest, StreamEvent, redact_headers
 from ..utils.sse_async import aiter_sse_data
+from ._openai_responses import (
+    ResponsesStreamTranslator,
+    build_edit_payload,
+    build_responses_payload,
+    operation_for_options,
+    parse_responses_response,
+)
 from ._openai_shape import (
     StreamToolAccumulator,
     build_payload,
@@ -18,6 +25,8 @@ from ._openai_shape import (
     text_delta_from_chunk,
 )
 from .base import Provider, ProviderCapabilities
+
+RESPONSES_DEFAULT_TIMEOUT = 120.0
 
 
 class OpenAIAsyncProvider(Provider):
@@ -32,6 +41,9 @@ class OpenAIAsyncProvider(Provider):
         documents=True,
         audio_in=True,
         image_out=True,
+        image_edit=True,
+        hosted_image_tool=True,
+        image_partial_streaming=True,
     )
 
     def __init__(self, api_key: str, base_url: str = "https://api.openai.com/v1"):
@@ -77,6 +89,16 @@ class OpenAIAsyncProvider(Provider):
         raise_for_status(r.status_code, r.text)
         return parse_image_response(r.json())
 
+    async def aedit_image(self, req: ImageEditRequest, *, timeout: Optional[float] = None):
+        payload = build_edit_payload(req)
+        url = f"{self.base_url}/responses"
+        async with httpx.AsyncClient(timeout=timeout or RESPONSES_DEFAULT_TIMEOUT) as c:
+            r = await c.post(url, headers=self._headers(), json=payload)
+        raise_for_status(r.status_code, r.text)
+        return parse_responses_response(
+            r.json(), provider=self.name, model=req.model, operation="edit"
+        )
+
     def chat(self, req, *, tools: Sequence[ToolSpec] = (), timeout: Optional[float] = None):
         raise NotImplementedError
 
@@ -84,6 +106,18 @@ class OpenAIAsyncProvider(Provider):
         raise NotImplementedError
 
     async def achat(self, req, *, tools: Sequence[ToolSpec] = (), timeout: Optional[float] = None):
+        if getattr(req, "image_generation", None) is not None:
+            payload = build_responses_payload(req, tools, caps=self.capabilities, provider=self.name)
+            url = f"{self.base_url}/responses"
+            async with httpx.AsyncClient(timeout=timeout or RESPONSES_DEFAULT_TIMEOUT) as c:
+                r = await c.post(url, headers=self._headers(), json=payload)
+            raise_for_status(r.status_code, r.text)
+            return parse_responses_response(
+                r.json(),
+                provider=self.name,
+                model=req.model,
+                operation=operation_for_options(req.image_generation),
+            )
         payload = build_payload(req, tools, caps=self.capabilities, provider=self.name)
         url = f"{self.base_url}/chat/completions"
         async with httpx.AsyncClient(timeout=timeout or 30.0) as c:
@@ -92,6 +126,10 @@ class OpenAIAsyncProvider(Provider):
         return parse_chat_response(r.json())
 
     async def astream(self, req, *, tools: Sequence[ToolSpec] = (), timeout: Optional[float] = None):
+        if getattr(req, "image_generation", None) is not None:
+            async for event in self._aresponses_stream(req, tools, timeout):
+                yield event
+            return
         payload = build_payload(req, tools, stream=True, caps=self.capabilities, provider=self.name)
         url = f"{self.base_url}/chat/completions"
         acc = StreamToolAccumulator()
@@ -113,3 +151,28 @@ class OpenAIAsyncProvider(Provider):
         for event in acc.events():
             yield event
         yield StreamEvent.done()
+
+    async def _aresponses_stream(self, req, tools, timeout):
+        payload = build_responses_payload(
+            req, tools, stream=True, caps=self.capabilities, provider=self.name
+        )
+        url = f"{self.base_url}/responses"
+        translator = ResponsesStreamTranslator(
+            provider=self.name, model=req.model, operation=operation_for_options(req.image_generation)
+        )
+        async with httpx.AsyncClient(timeout=timeout) as c:
+            async with c.stream("POST", url, headers=self._headers(), json=payload) as r:
+                if r.status_code >= 400:
+                    body = (await r.aread()).decode("utf-8", errors="replace")
+                    raise_for_status(r.status_code, body)
+                async for chunk in aiter_sse_data(r.aiter_bytes()):
+                    if chunk == "[DONE]":
+                        break
+                    try:
+                        obj = json.loads(chunk)
+                    except Exception:
+                        continue
+                    for event in translator.feed(obj):
+                        yield event
+        for event in translator.finish():
+            yield event

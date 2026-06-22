@@ -47,7 +47,9 @@ def describe_provider(name: str, *, async_mode: bool = False) -> Dict[str, Any]:
         >>> describe_provider("google")
         {'name': 'google', 'native': True, 'tools': True, 'structured_output': True,
          'streaming': True, 'async_chat': False, 'async_streaming': False,
-         'vision': True, 'documents': True, 'audio_in': True, 'image_out': True}
+         'vision': True, 'documents': True, 'audio_in': True, 'image_out': True,
+         'image_in': True, 'image_edit': False, 'hosted_image_tool': False,
+         'image_partial_streaming': False}
     """
     provider = get_provider(
         name,
@@ -68,4 +70,10 @@ def describe_provider(name: str, *, async_mode: bool = False) -> Dict[str, Any]:
         "documents": caps.documents,
         "audio_in": caps.audio_in,
         "image_out": caps.image_out,
+        # Image input alias + the image-tool modalities (callers gate the
+        # generate/edit UI on these).
+        "image_in": caps.image_in,
+        "image_edit": caps.image_edit,
+        "hosted_image_tool": caps.hosted_image_tool,
+        "image_partial_streaming": caps.image_partial_streaming,
     }

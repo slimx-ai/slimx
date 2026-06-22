@@ -5,10 +5,17 @@ from typing import Dict, Iterable, Optional, Sequence
 import httpx
 
 from ..errors import ProviderAuthError
-from ..low.types import ImageRequest
+from ..low.types import ImageEditRequest, ImageRequest
 from ..tooling import ToolSpec
 from ..types import InspectedRequest, StreamEvent, redact_headers
 from ..utils.sse import iter_sse_data
+from ._openai_responses import (
+    ResponsesStreamTranslator,
+    build_edit_payload,
+    build_responses_payload,
+    operation_for_options,
+    parse_responses_response,
+)
 from ._openai_shape import (
     StreamToolAccumulator,
     build_payload,
@@ -18,6 +25,10 @@ from ._openai_shape import (
     text_delta_from_chunk,
 )
 from .base import Provider, ProviderCapabilities
+
+# A hosted-image-tool request goes to the Responses API, which can run an image
+# generation for tens of seconds; give it a roomier default than chat.
+RESPONSES_DEFAULT_TIMEOUT = 120.0
 
 
 class OpenAIProvider(Provider):
@@ -30,6 +41,9 @@ class OpenAIProvider(Provider):
         documents=True,
         audio_in=True,
         image_out=True,
+        image_edit=True,
+        hosted_image_tool=True,
+        image_partial_streaming=True,
     )
 
     def __init__(self, api_key: str, base_url: str = "https://api.openai.com/v1"):
@@ -63,6 +77,16 @@ class OpenAIProvider(Provider):
         return [m.get("id") for m in (data.get("data") or []) if m.get("id")]
 
     def build_request(self, req, *, tools: Sequence[ToolSpec] = (), stream: bool = False):
+        if getattr(req, "image_generation", None) is not None:
+            return InspectedRequest(
+                provider=self.name,
+                method="POST",
+                url=f"{self.base_url}/responses",
+                headers=redact_headers(self._headers()),
+                payload=build_responses_payload(
+                    req, tools, stream=stream, caps=self.capabilities, provider=self.name
+                ),
+            )
         return InspectedRequest(
             provider=self.name,
             method="POST",
@@ -87,7 +111,31 @@ class OpenAIProvider(Provider):
         raise_for_status(r.status_code, r.text)
         return parse_image_response(r.json())
 
+    def edit_image(self, req: ImageEditRequest, *, timeout: Optional[float] = None):
+        """Edit/refine source image(s) via the Responses API (forced image tool)."""
+        payload = build_edit_payload(req)
+        url = f"{self.base_url}/responses"
+        with httpx.Client(timeout=timeout or RESPONSES_DEFAULT_TIMEOUT) as c:
+            r = c.post(url, headers=self._headers(), json=payload)
+        raise_for_status(r.status_code, r.text)
+        return parse_responses_response(
+            r.json(), provider=self.name, model=req.model, operation="edit"
+        )
+
     def chat(self, req, *, tools: Sequence[ToolSpec] = (), timeout: Optional[float] = None):
+        # Hosted image tool requested → Responses API; otherwise Chat Completions.
+        if getattr(req, "image_generation", None) is not None:
+            payload = build_responses_payload(req, tools, caps=self.capabilities, provider=self.name)
+            url = f"{self.base_url}/responses"
+            with httpx.Client(timeout=timeout or RESPONSES_DEFAULT_TIMEOUT) as c:
+                r = c.post(url, headers=self._headers(), json=payload)
+            raise_for_status(r.status_code, r.text)
+            return parse_responses_response(
+                r.json(),
+                provider=self.name,
+                model=req.model,
+                operation=operation_for_options(req.image_generation),
+            )
         payload = build_payload(req, tools, caps=self.capabilities, provider=self.name)
         url = f"{self.base_url}/chat/completions"
         with httpx.Client(timeout=timeout or 30.0) as c:
@@ -98,6 +146,13 @@ class OpenAIProvider(Provider):
     def stream(
         self, req, *, tools: Sequence[ToolSpec] = (), timeout: Optional[float] = None
     ) -> Iterable[StreamEvent]:
+        # Return the right generator; the method itself is a plain dispatcher so a
+        # `return` here is a value, not a swallowed StopIteration.
+        if getattr(req, "image_generation", None) is not None:
+            return self._responses_stream(req, tools, timeout)
+        return self._chat_stream(req, tools, timeout)
+
+    def _chat_stream(self, req, tools, timeout) -> Iterable[StreamEvent]:
         payload = build_payload(req, tools, stream=True, caps=self.capabilities, provider=self.name)
         url = f"{self.base_url}/chat/completions"
         with httpx.Client(timeout=timeout) as c:
@@ -120,3 +175,28 @@ class OpenAIProvider(Provider):
                 for event in acc.events():
                     yield event
         yield StreamEvent.done()
+
+    def _responses_stream(self, req, tools, timeout) -> Iterable[StreamEvent]:
+        payload = build_responses_payload(
+            req, tools, stream=True, caps=self.capabilities, provider=self.name
+        )
+        url = f"{self.base_url}/responses"
+        translator = ResponsesStreamTranslator(
+            provider=self.name, model=req.model, operation=operation_for_options(req.image_generation)
+        )
+        with httpx.Client(timeout=timeout) as c:
+            with c.stream("POST", url, headers=self._headers(), json=payload) as r:
+                if r.status_code >= 400:
+                    body = r.read().decode("utf-8", errors="replace")
+                    raise_for_status(r.status_code, body)
+                for chunk in iter_sse_data(r.iter_bytes()):
+                    if chunk == "[DONE]":
+                        break
+                    try:
+                        obj = json.loads(chunk)
+                    except Exception:
+                        continue
+                    for event in translator.feed(obj):
+                        yield event
+        for event in translator.finish():
+            yield event

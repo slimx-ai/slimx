@@ -1,5 +1,43 @@
 # Changelog
 
+## v1.5.0 (2026-06-22)
+
+### Added — OpenAI Responses image tool, image editing, image stream events
+
+- **OpenAI Responses API hosted image-generation tool.** A text model (e.g.
+  `gpt-5.5`) can now generate real image bytes inline. OpenAI-shaped providers route
+  to `/responses` automatically whenever a call carries an `image_generation` config
+  (`ChatRequest.image_generation` or an `ImageEditRequest`); plain text/function-tool
+  chat stays on `/chat/completions` — fully backward compatible. See
+  `docs/concepts/image-generation.md`.
+  - New `ImageGenerationOptions` (size/quality/output_format/background/
+    output_compression/partial_images/action/force) maps onto the tool object;
+    `force` sets `tool_choice` so the model must call the tool.
+  - `image_generation_call` outputs are decoded exactly once into `GeneratedImage`
+    bytes; text + image outputs in one response are both captured.
+- **First-class image editing.** `Model.edit_image(image, instruction, …)` /
+  `AsyncModel.edit_image` (+ `Provider.edit_image`/`aedit_image`, `ImageEditRequest`,
+  `ImageInput`). Sends the source as an `input_image` and forces the image tool;
+  operates on the supplied bytes (durable — survives provider state expiry). Supports
+  multiple source images and an optional `previous_response_id` optimization.
+- **Normalized image stream events.** `StreamEvent` gains `image_started`,
+  `image_partial` (transient base64 preview), and `image_completed` (final
+  `GeneratedImage`), surfaced from the Responses SSE stream.
+- **Expanded `GeneratedImage`.** Adds `width`/`height`, `provider`/`model`,
+  `operation`, `provider_response_id`/`provider_call_id`, `revised_prompt`,
+  `source_ids`, `output_index`, `metadata`, and `suggested_extension`. MIME is
+  sniffed from the bytes; `content.image_dimensions()` reads header dimensions.
+- **Capabilities.** `ProviderCapabilities` adds `image_edit`, `hosted_image_tool`,
+  `image_partial_streaming`, and an `image_in` alias; `describe_provider()` reports
+  them. The `oai` OpenAI-compatible provider does **not** advertise the hosted image
+  tool.
+
+### Compatibility
+
+- Existing `/chat/completions` text/streaming/vision and `/images/generations`
+  behaviour is unchanged. New public symbols: `ImageGenerationOptions`, `ImageInput`,
+  `ImageEditRequest`.
+
 ## v1.4.0 (2026-06-18)
 
 ### Added — Local hardware awareness & model recommendations

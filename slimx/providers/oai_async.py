@@ -11,7 +11,13 @@ class OAIAsyncProvider(OpenAIAsyncProvider):
     """Async OpenAI-compatible provider for local and self-hosted model servers."""
 
     name = "oai"
-    capabilities = replace(OpenAIAsyncProvider.capabilities, image_out=False)
+    capabilities = replace(
+        OpenAIAsyncProvider.capabilities,
+        image_out=False,
+        image_edit=False,
+        hosted_image_tool=False,
+        image_partial_streaming=False,
+    )
 
     @classmethod
     def from_env(cls, **overrides):

@@ -118,7 +118,18 @@ class ToolCall:
 # Streaming
 # -------------------------
 
-StreamEventType = Literal["text_delta", "tool_call", "done", "error"]
+# Additive: the image_* events only appear from providers/models that support
+# hosted image generation (OpenAI Responses). Existing consumers that switch on
+# the original four types keep working — they simply never see the new ones.
+StreamEventType = Literal[
+    "text_delta",
+    "tool_call",
+    "done",
+    "error",
+    "image_started",
+    "image_partial",
+    "image_completed",
+]
 
 
 @dataclass(frozen=True)
@@ -131,6 +142,14 @@ class StreamEvent:
     tool_call: Optional[ToolCall] = None
     error: Optional[str] = None
     raw: Any = None
+
+    # Image streaming (image_started / image_partial / image_completed). `image`
+    # carries the final normalized result on completion; `image_partial_b64` is a
+    # transient preview frame (base64, intentionally not a `GeneratedImage` so it
+    # is never mistaken for a final asset). `image_index` identifies the output.
+    image: Optional["GeneratedImage"] = None
+    image_partial_b64: Optional[str] = None
+    image_index: Optional[int] = None
 
     @staticmethod
     def text_delta(delta: str, *, raw: Any = None) -> "StreamEvent":
@@ -148,6 +167,24 @@ class StreamEvent:
     def err(message: str, *, raw: Any = None) -> "StreamEvent":
         return StreamEvent(type="error", error=message, raw=raw)
 
+    @staticmethod
+    def image_started(*, index: Optional[int] = None, raw: Any = None) -> "StreamEvent":
+        return StreamEvent(type="image_started", image_index=index, raw=raw)
+
+    @staticmethod
+    def image_partial(
+        b64: str, *, index: Optional[int] = None, raw: Any = None
+    ) -> "StreamEvent":
+        return StreamEvent(
+            type="image_partial", image_partial_b64=b64, image_index=index, raw=raw
+        )
+
+    @staticmethod
+    def image_completed(
+        image: "GeneratedImage", *, index: Optional[int] = None, raw: Any = None
+    ) -> "StreamEvent":
+        return StreamEvent(type="image_completed", image=image, image_index=index, raw=raw)
+
 
 # -------------------------
 # Result
@@ -158,10 +195,95 @@ class GeneratedImage:
     """An image returned by an image-generation model.
 
     Carried on `Result.images`. Inline bytes live in `data`; some providers
-    instead return a hosted `url`.
+    instead return a hosted `url`. The remaining fields are best-effort
+    provenance/normalization metadata: providers fill what they actually return,
+    everything else stays None so callers can persist a self-describing asset
+    (operation, lineage, provider ids, revised prompt, dimensions) without
+    overloading the image bytes.
     """
     mime_type: Optional[str] = None
     data: Optional[bytes] = None
+    url: Optional[str] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    # "generate" | "edit" | "auto" — how this image was produced.
+    operation: Optional[str] = None
+    # Provider-side optimization/state ids (never the only copy of the image).
+    provider_response_id: Optional[str] = None
+    provider_call_id: Optional[str] = None
+    # The model's optimized/revised prompt, when the provider returns one.
+    revised_prompt: Optional[str] = None
+    # Provider ids of source images this output was edited/derived from.
+    source_ids: tuple = ()
+    output_index: Optional[int] = None
+    # Safe-to-persist provider extras (no bytes/secrets).
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def suggested_extension(self) -> str:
+        return _MIME_EXTENSION.get((self.mime_type or "").lower(), "png")
+
+
+_MIME_EXTENSION = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/webp": "webp",
+    "image/gif": "gif",
+}
+
+
+@dataclass(frozen=True)
+class ImageGenerationOptions:
+    """Configuration for the hosted image-generation tool.
+
+    Provider-neutral knobs that map onto the OpenAI Responses ``image_generation``
+    tool object. ``action`` selects automatic/forced-generate/forced-edit at the
+    tool level; ``force`` additionally makes the model *call* the tool (provider
+    ``tool_choice``) rather than deciding on its own. Unset fields are omitted so
+    the provider applies its own defaults.
+    """
+    size: Optional[str] = None
+    quality: Optional[str] = None
+    output_format: Optional[str] = None  # png | jpeg | webp
+    background: Optional[str] = None  # opaque | transparent | auto
+    output_compression: Optional[int] = None
+    partial_images: Optional[int] = None
+    # auto | generate | edit
+    action: str = "auto"
+    # When True, request that the model invoke the image tool (tool_choice).
+    force: bool = False
+    # Provider-specific tool keys passed through verbatim (e.g. input_image_mask).
+    extra: Optional[Dict[str, Any]] = None
+
+    def to_tool_dict(self) -> Dict[str, Any]:
+        """The ``{"type": "image_generation", ...}`` tool object (None elided)."""
+        tool: Dict[str, Any] = {"type": "image_generation"}
+        for key in ("size", "quality", "output_format", "background"):
+            value = getattr(self, key)
+            if value is not None:
+                tool[key] = value
+        if self.output_compression is not None:
+            tool["output_compression"] = self.output_compression
+        if self.partial_images is not None:
+            tool["partial_images"] = self.partial_images
+        if self.extra:
+            tool.update(self.extra)
+        return tool
+
+
+@dataclass(frozen=True)
+class ImageInput:
+    """A source image for editing or visual reference.
+
+    Carries inline ``data`` bytes (the durable path — survives provider state
+    expiry) or a provider ``file_id`` / hosted ``url``.
+    """
+    data: Optional[bytes] = None
+    mime_type: Optional[str] = None
+    file_id: Optional[str] = None
     url: Optional[str] = None
 
 

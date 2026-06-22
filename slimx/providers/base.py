@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import AsyncIterator, Awaitable, Iterable, Optional, Sequence
 from ..tooling import ToolSpec
-from ..low.types import ChatRequest, ImageRequest
+from ..low.types import ChatRequest, ImageEditRequest, ImageRequest
 from ..types import InspectedRequest, Result, StreamEvent
 
 @dataclass(frozen=True)
@@ -17,6 +17,14 @@ class ProviderCapabilities:
     documents: bool = False     # document (e.g. PDF) input
     audio_in: bool = False      # audio input
     image_out: bool = False     # image-generation output
+    image_edit: bool = False    # image editing (edit_image / hosted edit action)
+    hosted_image_tool: bool = False      # in-conversation image_generation tool
+    image_partial_streaming: bool = False  # partial-image stream events
+
+    @property
+    def image_in(self) -> bool:
+        """Alias for ``vision`` (image input), for symmetry with image_out/edit."""
+        return self.vision
 
 
 class Provider(ABC):
@@ -88,6 +96,17 @@ class Provider(ABC):
         self, req: ImageRequest, *, timeout: Optional[float]=None
     ) -> Awaitable[Result]:
         raise NotImplementedError("Async image generation not implemented for this provider")
+
+    # Image editing: refine source image(s) with an instruction. Only providers
+    # that declare `capabilities.image_edit` implement these; edited images land
+    # on `Result.images` just like generation.
+    def edit_image(self, req: ImageEditRequest, *, timeout: Optional[float]=None) -> Result:
+        raise NotImplementedError("Image editing not implemented for this provider")
+
+    def aedit_image(
+        self, req: ImageEditRequest, *, timeout: Optional[float]=None
+    ) -> Awaitable[Result]:
+        raise NotImplementedError("Async image editing not implemented for this provider")
 
     # Dry-run inspection for image generation (optional).
     def build_image_request(self, req: ImageRequest) -> InspectedRequest:

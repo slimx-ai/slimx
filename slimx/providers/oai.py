@@ -17,8 +17,15 @@ class OAIProvider(OpenAIProvider):
 
     name = "oai"
     # OpenAI-compatible servers speak Chat Completions but seldom expose the
-    # separate `/images/generations` endpoint, so image-out is not promised here.
-    capabilities = replace(OpenAIProvider.capabilities, image_out=False)
+    # separate `/images/generations` endpoint or the Responses hosted image tool,
+    # so none of the image-out/edit/hosted-tool modalities are promised here.
+    capabilities = replace(
+        OpenAIProvider.capabilities,
+        image_out=False,
+        image_edit=False,
+        hosted_image_tool=False,
+        image_partial_streaming=False,
+    )
 
     @classmethod
     def from_env(cls, **overrides):
