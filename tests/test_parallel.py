@@ -126,3 +126,56 @@ def test_parallel_is_exposed_at_top_level():
     assert hasattr(slimx, "parallel")
     assert hasattr(slimx, "ParallelResult")
     assert hasattr(slimx, "ParallelItem")
+
+
+def test_cancel_event_preset_skips_every_call():
+    import threading
+
+    evt = threading.Event()
+    evt.set()
+    res = parallel(["ptest:a", "ptest:b"], cancel_event=evt)("hi")
+    assert [it.cancelled for it in res.results] == [True, True]
+    assert all(not it.ok for it in res.results)
+    assert all("Cancelled" in (it.error or "") for it in res.results)
+
+
+def test_cancel_event_set_midway_stops_new_calls_but_keeps_finished_results():
+    import threading
+
+    evt = threading.Event()
+    # One worker: the first (slow) call runs to completion; the event set during it means
+    # the second call never starts.
+    p = parallel(["ptest:slow-1", "ptest:late"], max_workers=1)
+
+    def set_soon():
+        time.sleep(0.05)
+        evt.set()
+
+    t = __import__("threading").Thread(target=set_soon)
+    t.start()
+    res = p("hi", cancel_event=evt)
+    t.join()
+    assert res.results[0].ok  # finished work is kept
+    assert res.results[1].cancelled is True
+
+
+def test_cancel_event_skips_judge_synthesis():
+    import threading
+
+    evt = threading.Event()
+
+    p = parallel(["ptest:a"], mode="judge", judge="ptest:judge")
+    evt.set()
+    res = p("hi", cancel_event=evt)
+    # Candidates were never started either (event pre-set) and no judge winner exists.
+    assert res.winner is None
+    assert res.trace.get("judge_cancelled") is True
+
+
+def test_cancel_event_kwarg_never_leaks_into_model_calls():
+    import threading
+
+    evt = threading.Event()  # NOT set — calls proceed; kwarg must be stripped
+    res = parallel(["ptest:a"])("hi", cancel_event=evt)
+    assert res.results[0].ok
+    assert res.results[0].result.text == "answer:a"

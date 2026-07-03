@@ -15,6 +15,7 @@ modes are intentionally out of scope for v1.
 from __future__ import annotations
 
 import time
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
@@ -34,6 +35,9 @@ class ParallelItem:
     result: Optional[Result] = None
     error: Optional[str] = None
     elapsed_ms: Optional[int] = None
+    # True when the call never started because a ``cancel_event`` was set (additive;
+    # ``ok`` stays False and ``error`` carries the human-readable reason).
+    cancelled: bool = False
 
     @property
     def ok(self) -> bool:
@@ -71,6 +75,7 @@ class Parallel:
         mode: str = "all",
         judge: Optional[str] = None,
         max_workers: Optional[int] = None,
+        cancel_event: Optional[threading.Event] = None,
         **model_kwargs: Any,
     ):
         if mode not in _MODES:
@@ -89,20 +94,39 @@ class Parallel:
         self._judge_string = judge
         self._judge_model: Optional[Model] = llm(judge, **model_kwargs) if judge else None
         self._max_workers = max_workers or len(self._models)
+        # Cooperative cancellation: checked before each model call starts (and before the
+        # judge synthesis). An in-flight provider request is NOT aborted mid-HTTP — the
+        # guarantee is "no NEW work begins after the event is set".
+        self._cancel_event = cancel_event
 
     def __call__(self, prompt: str, **overrides: Any) -> ParallelResult:
+        # Per-call cancel_event overrides the constructor's; popped so it never reaches the
+        # underlying model call as a generation parameter.
+        cancel_event = overrides.pop("cancel_event", None) or self._cancel_event
         if self.mode == "race":
-            return self._race(prompt, overrides)
+            return self._race(prompt, overrides, cancel_event)
         if self.mode == "compare":
-            return self._compare(prompt, overrides)
+            return self._compare(prompt, overrides, cancel_event)
         if self.mode == "judge":
-            return self._judge(prompt, overrides)
-        return self._all(prompt, overrides)
+            return self._judge(prompt, overrides, cancel_event)
+        return self._all(prompt, overrides, cancel_event)
 
     def _invoke(
-        self, model_string: str, model: Model, prompt: str, overrides: Dict[str, Any]
+        self,
+        model_string: str,
+        model: Model,
+        prompt: str,
+        overrides: Dict[str, Any],
+        cancel_event: Optional[threading.Event] = None,
     ) -> ParallelItem:
         provider = model_string.split(":", 1)[0] if ":" in model_string else "openai"
+        if cancel_event is not None and cancel_event.is_set():
+            return ParallelItem(
+                provider=provider,
+                model=model_string,
+                error="Cancelled before this model call started (cancel_event set)",
+                cancelled=True,
+            )
         start = time.perf_counter()
         try:
             res = model(prompt, **overrides)
@@ -120,16 +144,27 @@ class Parallel:
                 elapsed_ms=int((time.perf_counter() - start) * 1000),
             )
 
-    def _gather(self, prompt: str, overrides: Dict[str, Any]) -> List[ParallelItem]:
+    def _gather(
+        self,
+        prompt: str,
+        overrides: Dict[str, Any],
+        cancel_event: Optional[threading.Event] = None,
+    ) -> List[ParallelItem]:
         with ThreadPoolExecutor(max_workers=self._max_workers) as ex:
             futures = [
-                ex.submit(self._invoke, ms, m, prompt, overrides) for ms, m in self._models
+                ex.submit(self._invoke, ms, m, prompt, overrides, cancel_event)
+                for ms, m in self._models
             ]
             return [f.result() for f in futures]  # preserve input order
 
-    def _all(self, prompt: str, overrides: Dict[str, Any]) -> ParallelResult:
+    def _all(
+        self,
+        prompt: str,
+        overrides: Dict[str, Any],
+        cancel_event: Optional[threading.Event] = None,
+    ) -> ParallelResult:
         started = time.perf_counter()
-        items = self._gather(prompt, overrides)
+        items = self._gather(prompt, overrides, cancel_event)
         return ParallelResult(
             text=None,
             results=items,
@@ -138,9 +173,14 @@ class Parallel:
             trace=self._trace("all", items, started),
         )
 
-    def _compare(self, prompt: str, overrides: Dict[str, Any]) -> ParallelResult:
+    def _compare(
+        self,
+        prompt: str,
+        overrides: Dict[str, Any],
+        cancel_event: Optional[threading.Event] = None,
+    ) -> ParallelResult:
         started = time.perf_counter()
-        items = self._gather(prompt, overrides)
+        items = self._gather(prompt, overrides, cancel_event)
         blocks = []
         for it in items:
             body = it.result.text if it.ok and it.result else f"[error] {it.error}"
@@ -153,12 +193,29 @@ class Parallel:
             trace=self._trace("compare", items, started),
         )
 
-    def _judge(self, prompt: str, overrides: Dict[str, Any]) -> ParallelResult:
+    def _judge(
+        self,
+        prompt: str,
+        overrides: Dict[str, Any],
+        cancel_event: Optional[threading.Event] = None,
+    ) -> ParallelResult:
         started = time.perf_counter()
-        candidates = self._gather(prompt, overrides)
+        candidates = self._gather(prompt, overrides, cancel_event)
         ok = [it for it in candidates if it.ok and it.result]
         trace = self._trace("judge", candidates, started)
         trace["judge"] = self._judge_string
+
+        # Cancellation between the fan-out and the synthesis: return the candidates that
+        # finished, but never start the judge call after the event is set.
+        if cancel_event is not None and cancel_event.is_set():
+            trace["judge_cancelled"] = True
+            return ParallelResult(
+                text=None,
+                results=candidates,
+                errors=[it for it in candidates if not it.ok],
+                winner=None,
+                trace=trace,
+            )
 
         if not ok or self._judge_model is None:
             return ParallelResult(
@@ -207,7 +264,12 @@ class Parallel:
             trace=trace,
         )
 
-    def _race(self, prompt: str, overrides: Dict[str, Any]) -> ParallelResult:
+    def _race(
+        self,
+        prompt: str,
+        overrides: Dict[str, Any],
+        cancel_event: Optional[threading.Event] = None,
+    ) -> ParallelResult:
         started = time.perf_counter()
         items: List[ParallelItem] = []
         winner: Optional[ParallelItem] = None
@@ -216,7 +278,8 @@ class Parallel:
         ex = ThreadPoolExecutor(max_workers=self._max_workers)
         try:
             futures = {
-                ex.submit(self._invoke, ms, m, prompt, overrides): ms for ms, m in self._models
+                ex.submit(self._invoke, ms, m, prompt, overrides, cancel_event): ms
+                for ms, m in self._models
             }
             for fut in as_completed(futures):
                 item = fut.result()
@@ -253,6 +316,7 @@ def parallel(
     mode: str = "all",
     judge: Optional[str] = None,
     max_workers: Optional[int] = None,
+    cancel_event: Optional[threading.Event] = None,
     **model_kwargs: Any,
 ) -> Parallel:
     """Fan a single prompt out to multiple models concurrently.
@@ -272,5 +336,17 @@ def parallel(
 
     Extra keyword arguments (e.g. ``temperature``, ``timeout``, ``retries``) are
     forwarded to each underlying model.
+
+    Cooperative cancellation: pass ``cancel_event`` (a ``threading.Event``) here or per
+    call (``p(prompt, cancel_event=evt)``). Once set, no NEW model call starts — pending
+    items return ``cancelled=True`` with an explanatory ``error`` — and judge synthesis is
+    skipped. An already-in-flight provider request is not aborted mid-HTTP.
     """
-    return Parallel(models, mode=mode, judge=judge, max_workers=max_workers, **model_kwargs)
+    return Parallel(
+        models,
+        mode=mode,
+        judge=judge,
+        max_workers=max_workers,
+        cancel_event=cancel_event,
+        **model_kwargs,
+    )
