@@ -365,6 +365,47 @@ def test_anthropic_extra_passes_through_to_payload(monkeypatch):
     assert body["tool_choice"] == {"type": "auto"}
 
 
+def test_no_sampling_models_omit_temperature_and_sampling_extra(monkeypatch):
+    # Recent Claude families (Opus 4.7/4.8, Sonnet 5, Fable/Mythos 5) reject sampling params
+    # with a 400 — the payload must OMIT the keys entirely (never default or null them).
+    response = FakeResponse(data={"content": [{"type": "text", "text": "ok"}]})
+    monkeypatch.setattr("slimx.providers.anthropic.httpx.Client", make_client(response))
+
+    provider = AnthropicProvider(api_key="k")
+    provider.chat(
+        ChatRequest(
+            model="claude-opus-4-8",
+            messages=[Message.user("hi")],
+            temperature=0.2,
+            extra={"top_p": 0.9, "top_k": 40, "stop_sequences": ["STOP"]},
+        )
+    )
+    body = captured["json"]
+    assert "temperature" not in body
+    assert "top_p" not in body
+    assert "top_k" not in body
+    # Non-sampling extra keys still pass through untouched.
+    assert body["stop_sequences"] == ["STOP"]
+
+
+def test_older_claude_models_keep_temperature_and_sampling_extra(monkeypatch):
+    response = FakeResponse(data={"content": [{"type": "text", "text": "ok"}]})
+    monkeypatch.setattr("slimx.providers.anthropic.httpx.Client", make_client(response))
+
+    provider = AnthropicProvider(api_key="k")
+    provider.chat(
+        ChatRequest(
+            model="claude-sonnet-4-6",
+            messages=[Message.user("hi")],
+            temperature=0.2,
+            extra={"top_p": 0.9},
+        )
+    )
+    body = captured["json"]
+    assert body["temperature"] == 0.2
+    assert body["top_p"] == 0.9
+
+
 def test_anthropic_list_models(monkeypatch):
     response = FakeResponse(
         data={"data": [{"id": "claude-haiku-4-5"}, {"id": "claude-sonnet-4-6"}, {}]}

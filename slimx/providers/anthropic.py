@@ -123,6 +123,35 @@ def _tools_payload(tools: Sequence[ToolSpec]) -> List[Dict[str, Any]]:
     ]
 
 
+# Recent Claude families reject non-default sampling params outright (HTTP 400,
+# "`temperature` is deprecated for this model"); Anthropic's guidance is to omit them.
+# Conservative model-prefix rule; sampling keys are dropped (never defaulted/nulled).
+ANTHROPIC_UNSUPPORTED_SAMPLING_PARAMS = frozenset({"temperature", "top_p", "top_k"})
+_NO_SAMPLING_MODEL_PREFIXES = (
+    "claude-opus-4-7",
+    "claude-opus-4-8",
+    "claude-sonnet-5",
+    "claude-fable-5",
+    "claude-mythos-5",
+)
+
+
+def _sampling_params_supported(model: str) -> bool:
+    model_name = model.strip().lower()
+    return not model_name.startswith(_NO_SAMPLING_MODEL_PREFIXES)
+
+
+def _filtered_extra(model: str, extra):
+    """req.extra with the rejected sampling keys removed for no-sampling models."""
+    if not extra:
+        return None
+    filtered = dict(extra)
+    if not _sampling_params_supported(model):
+        for key in ANTHROPIC_UNSUPPORTED_SAMPLING_PARAMS:
+            filtered.pop(key, None)
+    return filtered or None
+
+
 def _build_payload(req, tools: Sequence[ToolSpec], *, stream: bool = False) -> Dict[str, Any]:
     guard_modalities(req.messages, AnthropicProvider.capabilities, AnthropicProvider.name)
     system, messages = _messages_to_anthropic(req.messages)
@@ -133,14 +162,16 @@ def _build_payload(req, tools: Sequence[ToolSpec], *, stream: bool = False) -> D
     }
     if system:
         payload["system"] = system
-    if req.temperature is not None:
+    if req.temperature is not None and _sampling_params_supported(req.model):
         payload["temperature"] = req.temperature
     if tools:
         payload["tools"] = _tools_payload(tools)
     # Provider-specific escape hatch: top_p, stop_sequences, tool_choice, metadata,
-    # prompt caching, beta fields, etc. flow straight through `req.extra`.
-    if req.extra:
-        for key, value in req.extra.items():
+    # prompt caching, beta fields, etc. flow straight through `req.extra` — minus the
+    # sampling keys the selected model rejects.
+    extra = _filtered_extra(req.model, req.extra)
+    if extra:
+        for key, value in extra.items():
             payload[key] = value
     if stream:
         payload["stream"] = True
