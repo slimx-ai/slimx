@@ -11,6 +11,7 @@ from slimx.providers.google import GoogleProvider
 from slimx.providers.oai import OAIProvider
 from slimx.providers.ollama import OllamaProvider
 from slimx.providers.openai import OpenAIProvider
+from slimx.providers.openai_async import OpenAIAsyncProvider
 from slimx.providers.registry import get_provider
 
 _ENV_VARS = [
@@ -61,6 +62,7 @@ def test_factory_reads_env(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "env-key")
     monkeypatch.setenv("OPENAI_BASE_URL", "http://env/v1")
     p = get_provider("openai")
+    assert isinstance(p, OpenAIProvider)
     assert p.api_key == "env-key"
     assert p.base_url == "http://env/v1"
 
@@ -96,5 +98,6 @@ def test_oai_defaults_api_key_to_empty(monkeypatch):
 def test_async_factory_delegates(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "ak")
     p = get_provider("openai", async_mode=True)
+    assert isinstance(p, OpenAIAsyncProvider)
     assert p.api_key == "ak"
     assert p.capabilities.async_chat is True

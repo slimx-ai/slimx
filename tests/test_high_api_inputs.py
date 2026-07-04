@@ -6,11 +6,8 @@ from __future__ import annotations
 from slimx import Message, image
 from slimx.high.api import Model
 
-_KW = {"provider_kwargs": {"api_key": "k"}}
-
-
 def _model():
-    return Model("openai:gpt-4o", **_KW)
+    return Model("openai:gpt-4o", provider_kwargs={"api_key": "k"})
 
 
 def test_string_prompt_becomes_single_user_message():

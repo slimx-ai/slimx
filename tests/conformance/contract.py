@@ -236,9 +236,12 @@ _PDF = b"%PDF-1.7\n" + b"x" * 16
 _WAV = b"RIFF\x00\x00\x00\x00WAVE" + b"x" * 8
 
 _MODALITY_CASES = (
-    ("vision", "images", lambda: [_image(_PNG, mime_type="image/png")]),
-    ("documents", "documents", lambda: [_document(_PDF, mime_type="application/pdf")]),
-    ("audio_in", "audio", lambda: [_audio(_WAV, mime_type="audio/wav")]),
+    ("vision", lambda: Message.user("x", images=[_image(_PNG, mime_type="image/png")])),
+    (
+        "documents",
+        lambda: Message.user("x", documents=[_document(_PDF, mime_type="application/pdf")]),
+    ),
+    ("audio_in", lambda: Message.user("x", audio=[_audio(_WAV, mime_type="audio/wav")])),
 )
 
 
@@ -246,8 +249,8 @@ def check_modalities(provider: Provider) -> None:
     """Assert each declared input modality serializes and each undeclared one is
     rejected. Uses `build_request` so no network is touched."""
     caps = provider.capabilities
-    for attr, kw, make in _MODALITY_CASES:
-        req = ChatRequest(model="m", messages=[Message.user("x", **{kw: make()})])
+    for attr, make_message in _MODALITY_CASES:
+        req = ChatRequest(model="m", messages=[make_message()])
         if getattr(caps, attr):
             insp = provider.build_request(req)
             assert insp.payload, f"{provider.name} declared {attr} but produced no payload"

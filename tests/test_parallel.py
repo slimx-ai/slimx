@@ -177,5 +177,6 @@ def test_cancel_event_kwarg_never_leaks_into_model_calls():
 
     evt = threading.Event()  # NOT set — calls proceed; kwarg must be stripped
     res = parallel(["ptest:a"])("hi", cancel_event=evt)
-    assert res.results[0].ok
-    assert res.results[0].result.text == "answer:a"
+    item = res.results[0]
+    assert item.ok and item.result is not None
+    assert item.result.text == "answer:a"
