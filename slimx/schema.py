@@ -1,5 +1,6 @@
 import dataclasses
 import json
+import re
 import types
 
 from typing import Any, Dict, List, Tuple, Union, get_args, get_origin, get_type_hints
@@ -70,10 +71,20 @@ def schema_for(cls: Any) -> Dict[str, Any]:
             required.append(f.name)
     return {"type":"object","properties":props,"required":required,"additionalProperties":False}
 
+# Models without a native JSON mode (notably Anthropic) routinely wrap their JSON in a
+# markdown fence despite "no markdown" instructions. Tolerate the two common shapes —
+# a fenced block (optionally with surrounding prose) — before giving up.
+_JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL | re.IGNORECASE)
+
 def parse_json(text: str) -> Any:
     try:
         return json.loads(text)
     except Exception as e:
+        for match in _JSON_FENCE_RE.finditer(text or ""):
+            try:
+                return json.loads(match.group(1))
+            except Exception:
+                continue
         raise SchemaError(f"Failed to parse JSON: {e}") from e
 
 def coerce_dataclass(cls: Any, obj: Any) -> Any:

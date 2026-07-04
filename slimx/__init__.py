@@ -17,7 +17,7 @@ from __future__ import annotations
 from importlib import import_module
 from typing import Any, TYPE_CHECKING
 
-__version__ = "1.6.0"
+__version__ = "1.6.1"
 
 _LAZY: dict[str, tuple[str, str]] = {
     # High-level
