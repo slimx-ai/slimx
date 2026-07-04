@@ -20,7 +20,6 @@ from slimx.high.api import Model
 from slimx.low.types import ChatRequest, ImageEditRequest
 from slimx.providers._openai_responses import (
     ResponsesStreamTranslator,
-    build_responses_payload,
     parse_responses_response,
 )
 from slimx.providers.anthropic import AnthropicProvider
@@ -323,7 +322,9 @@ def test_provider_stream_full_path():
         events = list(OpenAIProvider("k").stream(req))
     assert "".join(e.text or "" for e in events if e.type == "text_delta") == "hi"
     completed = [e for e in events if e.type == "image_completed"]
-    assert completed and completed[0].image.data == PNG_1x1
+    assert completed
+    image = completed[0].image
+    assert image is not None and image.data == PNG_1x1
     assert events[-1].type == "done"
 
 
