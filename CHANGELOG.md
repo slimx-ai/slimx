@@ -1,5 +1,35 @@
 # Changelog
 
+## v1.6.2 (2026-07-06)
+
+### Changed
+
+- **`parallel()` reuses the model-string parser.** `Parallel` now derives the
+  provider prefix through the same `_parse_model` helper as `llm()`, replacing two
+  inline copies of the split logic. `ParallelItem.provider` now always matches the
+  provider actually resolved for the call (whitespace around the prefix is stripped).
+
+## v1.6.1 (2026-07-04)
+
+### Fixed
+
+- **`parse_json` tolerates markdown-fenced JSON.** Structured output no longer fails
+  when a model (notably Anthropic) wraps its JSON reply in markdown code fences.
+
+## v1.6.0 (2026-07-04)
+
+### Added
+
+- **`parallel()` cooperative cancellation.** Pass a `threading.Event` as
+  `cancel_event` (to the constructor or per call). Once set, no new model call
+  starts — pending items return `cancelled=True` with an explanatory `error` — and
+  judge synthesis is skipped. An in-flight provider request is not aborted mid-HTTP.
+
+### Fixed
+
+- **Anthropic: omit sampling parameters for models that reject them**, instead of
+  failing the request.
+
 ## v1.5.0 (2026-06-22)
 
 ### Added — OpenAI Responses image tool, image editing, image stream events

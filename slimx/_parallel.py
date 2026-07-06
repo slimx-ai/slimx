@@ -20,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
 
-from .high.api import Model, llm
+from .high.api import Model, _parse_model, llm
 from .types import Result
 
 _MODES = ("all", "race", "compare", "judge")
@@ -119,7 +119,7 @@ class Parallel:
         overrides: Dict[str, Any],
         cancel_event: Optional[threading.Event] = None,
     ) -> ParallelItem:
-        provider = model_string.split(":", 1)[0] if ":" in model_string else "openai"
+        provider = _parse_model(model_string)[0]
         if cancel_event is not None and cancel_event.is_set():
             return ParallelItem(
                 provider=provider,
@@ -237,7 +237,7 @@ class Parallel:
         )
         jstart = time.perf_counter()
         judge_str = self._judge_string or ""
-        jprovider = judge_str.split(":", 1)[0] if ":" in judge_str else "openai"
+        jprovider = _parse_model(judge_str)[0]
         try:
             jres = self._judge_model(judge_prompt)
             winner = ParallelItem(
