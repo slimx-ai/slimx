@@ -16,7 +16,10 @@ from __future__ import annotations
 
 import os
 import shutil
-from typing import Iterator
+from typing import TYPE_CHECKING, Iterator
+
+if TYPE_CHECKING:
+    import httpx
 
 from .base import (
     EngineHealth,
@@ -132,13 +135,39 @@ class OllamaEngine(InferenceEngine):
         # Pulls can take minutes; only the connect phase is time-bounded.
         with httpx.Client(timeout=httpx.Timeout(None, connect=10.0)) as client:
             with client.stream("POST", url, json={"model": model_id, "stream": True}) as resp:
-                resp.raise_for_status()
+                if resp.status_code >= 400:
+                    # Ollama refuses a pull it cannot start (e.g. an invalid model name) with a
+                    # non-2xx JSON body. Keep the exception type, but carry the engine's reason:
+                    # the stock message names only the status and a generic help link.
+                    resp.read()
+                    reason = _error_reason(resp)
+                    if reason:
+                        raise httpx.HTTPStatusError(
+                            f"Ollama refused the pull (HTTP {resp.status_code}): {reason}",
+                            request=resp.request,
+                            response=resp,
+                        )
+                    resp.raise_for_status()
                 for obj in iter_ndjson(resp.iter_bytes()):
+                    error = obj.get("error")
                     yield PullEvent(
                         status=str(obj.get("status", "")),
                         completed=_as_int(obj.get("completed")),
                         total=_as_int(obj.get("total")),
+                        # A failure after the stream starts arrives as an ``{"error": ...}`` line
+                        # on HTTP 200, with no ``status``.
+                        error=str(error) if error else None,
                     )
+
+
+def _error_reason(resp: httpx.Response) -> str | None:
+    """The ``error`` string from an Ollama JSON error body, if there is one."""
+    try:
+        body = resp.json()
+    except ValueError:
+        return None
+    error = body.get("error") if isinstance(body, dict) else None
+    return str(error) if error else None
 
 
 def _as_int(value: object) -> int | None:

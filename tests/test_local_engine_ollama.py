@@ -102,3 +102,109 @@ def test_health_handles_unreachable(monkeypatch):
 def test_base_url_from_env(monkeypatch):
     monkeypatch.setenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
     assert OllamaEngine().base_url == "http://host.docker.internal:11434"
+
+
+# --------------------------------------------------------------------------
+# Model pull (/api/pull). Frames below are the shapes a real Ollama 0.30.6 sent.
+# --------------------------------------------------------------------------
+
+def _pull_transport(monkeypatch, handler):
+    """Route the engine's internally-built ``httpx.Client`` through a mock transport."""
+    import httpx
+
+    real_client = httpx.Client
+    monkeypatch.setattr(
+        "httpx.Client",
+        lambda *a, **k: real_client(*a, transport=httpx.MockTransport(handler), **k),
+    )
+
+
+def _ndjson(*frames):
+    import json
+
+    return "".join(json.dumps(f) + "\n" for f in frames).encode()
+
+
+def test_pull_streams_progress_to_success(monkeypatch):
+    import httpx
+
+    seen = {}
+
+    def handler(request):
+        import json
+
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            content=_ndjson(
+                {"status": "pulling manifest"},
+                {"status": "pulling 58c187648007", "total": 986833312, "completed": 902702688},
+                {"status": "verifying sha256 digest"},
+                {"status": "writing manifest"},
+                {"status": "success"},
+            ),
+        )
+
+    _pull_transport(monkeypatch, handler)
+    events = list(OllamaEngine("http://ollama.test").pull_or_prepare_model("gemma4:e2b-it-qat"))
+    assert seen["body"] == {"model": "gemma4:e2b-it-qat", "stream": True}
+    assert [e.status for e in events][-1] == "success"
+    assert (events[1].completed, events[1].total) == (902702688, 986833312)
+    # Ordinary frames never carry an error.
+    assert all(e.error is None for e in events)
+    assert events[0].to_dict() == {
+        "status": "pulling manifest",
+        "completed": None,
+        "total": None,
+        "error": None,
+    }
+
+
+def test_pull_in_stream_error_keeps_the_engine_reason(monkeypatch):
+    """An unknown tag fails on HTTP 200 with an ``{"error": ...}`` line. The reason must reach
+    the caller; it used to collapse into an empty-status frame with nothing attached."""
+    import httpx
+
+    def handler(request):
+        return httpx.Response(
+            200,
+            content=_ndjson(
+                {"status": "pulling manifest"},
+                {"error": "pull model manifest: file does not exist"},
+            ),
+        )
+
+    _pull_transport(monkeypatch, handler)
+    events = list(OllamaEngine("http://ollama.test").pull_or_prepare_model("gemma4:4b"))
+    assert events[-1].error == "pull model manifest: file does not exist"
+    assert events[-1].status == ""
+    assert events[-1].to_dict()["error"] == "pull model manifest: file does not exist"
+
+
+def test_pull_refused_with_non_2xx_raises_with_the_engine_reason(monkeypatch):
+    """An invalid model name is refused with HTTP 400 and a JSON reason. The exception type is
+    unchanged, but its message now says why instead of only naming the status code."""
+    import httpx
+    import pytest
+
+    def handler(request):
+        return httpx.Response(400, json={"error": "invalid model name"})
+
+    _pull_transport(monkeypatch, handler)
+    with pytest.raises(httpx.HTTPStatusError) as excinfo:
+        list(OllamaEngine("http://ollama.test").pull_or_prepare_model("Gemma 4"))
+    assert "invalid model name" in str(excinfo.value)
+    assert "HTTP 400" in str(excinfo.value)
+
+
+def test_pull_non_2xx_without_a_reason_still_raises(monkeypatch):
+    import httpx
+    import pytest
+
+    def handler(request):
+        return httpx.Response(502, content=b"<html>bad gateway</html>")
+
+    _pull_transport(monkeypatch, handler)
+    with pytest.raises(httpx.HTTPStatusError) as excinfo:
+        list(OllamaEngine("http://ollama.test").pull_or_prepare_model("gemma4"))
+    assert "502" in str(excinfo.value)
