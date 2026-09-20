@@ -134,7 +134,14 @@ class OllamaEngine(InferenceEngine):
         url = f"{self.base_url}/api/pull"
         # Pulls can take minutes; only the connect phase is time-bounded.
         with httpx.Client(timeout=httpx.Timeout(None, connect=10.0)) as client:
-            with client.stream("POST", url, json={"model": model_id, "stream": True}) as resp:
+            # Ask for diagnostics we can read without decompression. A peer may ignore this;
+            # _bounded_body still declines actually encoded refusals before consuming them.
+            with client.stream(
+                "POST",
+                url,
+                json={"model": model_id, "stream": True},
+                headers={"Accept-Encoding": "identity"},
+            ) as resp:
                 if not resp.is_success:
                     # Any non-2xx, exactly as ``raise_for_status()`` judged it before: a redirect
                     # this client does not follow is a failure too, not an empty pull. Ollama

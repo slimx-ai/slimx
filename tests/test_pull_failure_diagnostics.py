@@ -2,6 +2,7 @@
 
 import asyncio
 import gzip
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -69,8 +70,56 @@ def test_encoded_refusal_is_not_consumed_or_decoded(monkeypatch, encoding):
         list(OllamaEngine("http://fixture.invalid").pull_or_prepare_model("fixture"))
     assert caught.value.response is responses[0]
     assert caught.value.request is responses[0].request
+    assert caught.value.request.headers["Accept-Encoding"] == "identity"
+    assert caught.value.response.status_code == 502
     assert body.read == 0
-    assert body.closed and clients[0].is_closed
+    assert body.closed and responses[0].is_closed and clients[0].is_closed
+
+
+@pytest.mark.parametrize("status", [400, 503])
+@pytest.mark.parametrize(
+    "reason",
+    ["pull model manifest: file does not exist", "detail " * 400],
+    ids=["short", "bounded"],
+)
+def test_identity_negotiation_preserves_useful_bounded_refusal(monkeypatch, status, reason):
+    # Model an engine that honors negotiation: without the explicit request header, httpx
+    # advertises compression and this refusal's useful diagnostic is defensively declined.
+    real_client = httpx.Client
+    clients, responses, bodies = [], [], []
+
+    def handle(request):
+        payload = json.dumps({"error": reason}).encode()
+        identity = request.headers.get("Accept-Encoding") == "identity"
+        body = Body([payload if identity else gzip.compress(payload)])
+        response = httpx.Response(
+            status,
+            stream=body,
+            headers={"Content-Encoding": "identity" if identity else "gzip"},
+            request=request,
+        )
+        bodies.append(body)
+        responses.append(response)
+        return response
+
+    def client(*args, **kwargs):
+        instance = real_client(*args, transport=httpx.MockTransport(handle), **kwargs)
+        clients.append(instance)
+        return instance
+
+    monkeypatch.setattr(httpx, "Client", client)
+    with pytest.raises(httpx.HTTPStatusError) as caught:
+        list(OllamaEngine("http://fixture.invalid").pull_or_prepare_model("fixture"))
+    expected = reason.strip()
+    if len(expected) > 2_000:
+        expected = expected[:2_000].rstrip() + "…"
+    assert str(caught.value) == f"Ollama refused the pull (HTTP {status}): {expected}"
+    assert caught.value.request.headers["Accept-Encoding"] == "identity"
+    assert caught.value.request.url.path == "/api/pull"
+    assert caught.value.response is responses[0]
+    assert caught.value.request is responses[0].request
+    assert bodies[0].read > 0
+    assert bodies[0].closed and responses[0].is_closed and clients[0].is_closed
 
 
 @pytest.mark.parametrize("signal", [GeneratorExit, KeyboardInterrupt, SystemExit, asyncio.CancelledError])
@@ -90,14 +139,20 @@ def test_successful_stream_transport_error_is_not_a_refusal(monkeypatch):
     assert body.closed and clients[0].is_closed
 
 
-def test_successful_compressed_stream_keeps_original_progress(monkeypatch):
-    body = Body([gzip.compress(b'{"status":"success"}\n')])
-    serve(monkeypatch, 200, body, {"Content-Encoding": "gzip"})
+@pytest.mark.parametrize("encoding", ["identity", "gzip"])
+def test_successful_compressed_stream_keeps_original_progress(monkeypatch, encoding):
+    payload = b'{"status":"pulling","completed":1,"total":2}\n{"status":"success"}\n'
+    body = Body([gzip.compress(payload) if encoding == "gzip" else payload])
+    clients, responses = serve(monkeypatch, 200, body, {"Content-Encoding": encoding})
     assert [
         event.to_dict()
         for event in OllamaEngine("http://fixture.invalid").pull_or_prepare_model("fixture")
-    ] == [{"status": "success", "completed": None, "total": None}]
-    assert body.closed
+    ] == [
+        {"status": "pulling", "completed": 1, "total": 2},
+        {"status": "success", "completed": None, "total": None},
+    ]
+    assert responses[0].request.headers["Accept-Encoding"] == "identity"
+    assert body.closed and responses[0].is_closed and clients[0].is_closed
 
 
 @pytest.mark.parametrize("status", [307, 400, 502])

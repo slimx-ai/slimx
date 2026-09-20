@@ -19,8 +19,11 @@
   safe presentation, including credentials whose recognizable shape was cut by that bound.
   A non-2xx refusal still raises `httpx.HTTPStatusError`, now with the engine's reason in its
   message when an unencoded body has one. Diagnostic read/transport failures fall back to the
-  original status error and retain its request/response. Encoded failure bodies are declined
-  before consumption or decompression. At most 64 KiB of identity-encoded bytes are retained;
+  original status error and retain its request/response. The `/api/pull` request explicitly
+  sends `Accept-Encoding: identity` so a cooperating engine can return a readable diagnostic.
+  This request does not guarantee the response encoding: actually encoded failure bodies are
+  still declined before consumption or decompression. Successful compressed streams continue
+  to decode as before. At most 64 KiB of identity-encoded bytes are retained;
   transport consumption may include one crossing raw chunk, which is not appended. Length
   metadata is not trusted. Failure-body reads still have no read-time bound; successful
   streaming and its pre-existing unbounded NDJSON line buffer are unchanged.
