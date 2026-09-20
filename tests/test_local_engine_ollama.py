@@ -410,3 +410,61 @@ def test_the_response_is_closed_on_success_failure_and_interruption(monkeypatch)
     assert not abandoned.closed
     pull.close()
     assert abandoned.closed
+
+
+def test_any_non_2xx_is_a_failure_not_an_empty_pull(monkeypatch):
+    """Peer review of this PR: narrowing ``raise_for_status()`` to ``>= 400`` made a redirect or an
+    informational response yield nothing and raise nothing — a pull that looks like it completed.
+    This client does not follow redirects, so an ingress that 308s http→https is exactly that."""
+    import httpx
+    import pytest
+
+    for status in (100, 199, 301, 302, 304, 307, 308, 400, 404, 500, 502):
+        _pull_transport(monkeypatch, lambda request, s=status: httpx.Response(s, json={"x": 1}))
+        with pytest.raises(httpx.HTTPStatusError) as excinfo:
+            list(OllamaEngine("http://ollama.test").pull_or_prepare_model("m"))
+        assert excinfo.value.response.status_code == status
+
+    for status in (200, 201, 204):
+        _pull_transport(monkeypatch, lambda request, s=status: httpx.Response(s, content=b""))
+        assert list(OllamaEngine("http://ollama.test").pull_or_prepare_model("m")) == []
+
+
+def test_a_failure_body_the_parser_cannot_read_still_raises_the_stock_error(monkeypatch):
+    """Peer review of this PR: ``json.loads`` raises RecursionError, not ValueError, on deeply
+    nested input, so a 400 whose body is 60,000 open brackets escaped as RecursionError."""
+    import httpx
+    import pytest
+
+    _pull_transport(monkeypatch, lambda request: httpx.Response(400, content=b"[" * 60_000))
+    with pytest.raises(httpx.HTTPStatusError) as excinfo:
+        list(OllamaEngine("http://ollama.test").pull_or_prepare_model("m"))
+    assert "400" in str(excinfo.value) and "refused the pull" not in str(excinfo.value)
+
+
+def test_a_reason_is_reported_even_when_python_would_call_it_falsy(monkeypatch):
+    """``None`` and ``""`` mean "no reason"; ``0`` or ``[]`` are something the engine said."""
+    import httpx
+
+    from slimx.local.engines import ollama as engine_module
+
+    for reported, expected in [
+        (None, None),
+        ("", None),
+        ("   ", None),
+        (0, "0"),
+        (False, "false"),
+        ([], "[]"),
+        ("  padded  ", "padded"),
+    ]:
+        assert engine_module._reason_text(reported) == expected
+
+    # A lone surrogate survives json.loads but cannot be encoded as UTF-8 by a caller's framework.
+    _pull_transport(
+        monkeypatch,
+        lambda request: httpx.Response(200, content=b'{"error": "bad \\ud800 tag"}\n'),
+    )
+    (event,) = list(OllamaEngine("http://ollama.test").pull_or_prepare_model("m"))
+    assert event.error is not None
+    assert event.error.encode("utf-8")  # would raise UnicodeEncodeError on a lone surrogate
+    assert "\ud800" not in event.error

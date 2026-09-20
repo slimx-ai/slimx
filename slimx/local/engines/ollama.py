@@ -135,10 +135,12 @@ class OllamaEngine(InferenceEngine):
         # Pulls can take minutes; only the connect phase is time-bounded.
         with httpx.Client(timeout=httpx.Timeout(None, connect=10.0)) as client:
             with client.stream("POST", url, json={"model": model_id, "stream": True}) as resp:
-                if resp.status_code >= 400:
-                    # Ollama refuses a pull it cannot start (e.g. an invalid model name) with a
-                    # non-2xx JSON body. Keep the exception type, but carry the engine's reason:
-                    # the stock message names only the status and a generic help link.
+                if not resp.is_success:
+                    # Any non-2xx, exactly as ``raise_for_status()`` judged it before: a redirect
+                    # this client does not follow is a failure too, not an empty pull. Ollama
+                    # refuses a pull it cannot start (e.g. an invalid model name) with a JSON
+                    # body; keep the exception type, but carry the engine's reason, since the
+                    # stock message names only the status and a generic help link.
                     reason = _error_reason(_bounded_body(resp))
                     if reason:
                         raise httpx.HTTPStatusError(
@@ -160,12 +162,18 @@ class OllamaEngine(InferenceEngine):
 
 # A failure body is an engine's short JSON object. Anything larger is some proxy's page, and is not
 # read into memory; a reason longer than a paragraph is cut, so a caller can always show it.
+# Reading it is bounded in SIZE, not in time: this client bounds only the connect phase, because a
+# pull's own stream takes minutes, so a peer that stalls mid-body stalls the call. That is the same
+# exposure the success path has always had, now also reachable on a failure.
 _MAX_ERROR_BODY_BYTES = 65_536
 _MAX_ERROR_REASON_CHARS = 2_000
 
 
 def _bounded_body(resp: httpx.Response) -> bytes | None:
-    """At most ``_MAX_ERROR_BODY_BYTES`` of a failure body; None when it is larger than that."""
+    """At most ``_MAX_ERROR_BODY_BYTES`` of a failure body; None when it is larger than that.
+
+    Bounded in size only — see the note above the constants.
+    """
     body = b""
     for chunk in resp.iter_bytes():
         body += chunk
@@ -182,21 +190,30 @@ def _error_reason(body: bytes | None) -> str | None:
         return None
     try:
         parsed = json.loads(body)
-    except ValueError:  # malformed JSON, or bytes that are not text
+    except (ValueError, RecursionError):
+        # Malformed JSON, bytes that are not text, or nesting deep enough to exhaust the parser's
+        # stack. A body this engine cannot read is not a reason; the stock error stands.
         return None
     return _reason_text(parsed.get("error")) if isinstance(parsed, dict) else None
 
 
 def _reason_text(error: object) -> str | None:
-    """An engine-reported reason as bounded text; None when there is none."""
+    """An engine-reported reason as bounded text; None when the engine reported none.
+
+    ``None`` and ``""`` are "no reason". Anything else is one, including values that are falsy in
+    Python (``0``, ``False``, ``[]``): another engine may say that much and it is not this
+    function's place to drop it.
+    """
     import json
 
-    if not error:
+    if error is None:
         return None
     text = error if isinstance(error, str) else json.dumps(error, ensure_ascii=False, default=str)
-    text = text.strip()
+    # Engine text reaches a caller's UI verbatim. A lone surrogate (a ``\udXXX`` escape in the
+    # engine's JSON) survives json.loads but cannot be encoded as UTF-8 later, so replace it here.
+    text = text.encode("utf-8", "replace").decode("utf-8").strip()
     if len(text) > _MAX_ERROR_REASON_CHARS:
-        text = text[:_MAX_ERROR_REASON_CHARS] + "…"
+        text = text[:_MAX_ERROR_REASON_CHARS].rstrip() + "…"
     return text or None
 
 

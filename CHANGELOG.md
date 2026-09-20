@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **`OllamaEngine.pull_or_prepare_model` keeps the engine's failure reason.** A pull that
+  Ollama refuses reports why in one of two shapes, and both were discarded: an unknown tag
+  fails on HTTP 200 with an `{"error": ...}` NDJSON line, which became an empty-status
+  `PullEvent`; an invalid model name is refused with HTTP 400 and a JSON body that
+  `raise_for_status()` never read. A caller could only guess why a pull failed.
+
+### Added
+
+- **`PullEvent.error`** (optional, `None` on every ordinary progress frame). Set, with
+  `status == ""`, when the engine reports a failure mid-stream. `to_dict()` omits the key on
+  ordinary frames, so existing progress framing is unchanged. It is unsanitized engine text,
+  bounded to 2,000 characters; a caller that shows it to a user owns what is safe to display.
+  A non-2xx refusal still raises `httpx.HTTPStatusError`, now with the engine's reason in its
+  message when the body has one. At most 64 KiB of a failure body is read.
+
 ## v1.6.2 (2026-07-06)
 
 ### Changed

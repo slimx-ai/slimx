@@ -111,7 +111,8 @@ class PullEvent:
     completed: int | None = None
     total: int | None = None
     # The engine's own failure reason, verbatim, when it reports one mid-stream (Ollama sends an
-    # ``{"error": ...}`` line on HTTP 200). ``None`` on every ordinary progress frame. It is
+    # ``{"error": ...}`` line on HTTP 200). ``None`` on every ordinary progress frame, and then
+    # ``to_dict()`` omits the key entirely, so an ordinary frame serializes as it always has. It is
     # unsanitized engine text: a caller that shows it to a user owns what is safe to display.
     error: str | None = None
 
