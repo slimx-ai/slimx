@@ -139,8 +139,7 @@ class OllamaEngine(InferenceEngine):
                     # Ollama refuses a pull it cannot start (e.g. an invalid model name) with a
                     # non-2xx JSON body. Keep the exception type, but carry the engine's reason:
                     # the stock message names only the status and a generic help link.
-                    resp.read()
-                    reason = _error_reason(resp)
+                    reason = _error_reason(_bounded_body(resp))
                     if reason:
                         raise httpx.HTTPStatusError(
                             f"Ollama refused the pull (HTTP {resp.status_code}): {reason}",
@@ -149,25 +148,56 @@ class OllamaEngine(InferenceEngine):
                         )
                     resp.raise_for_status()
                 for obj in iter_ndjson(resp.iter_bytes()):
-                    error = obj.get("error")
                     yield PullEvent(
                         status=str(obj.get("status", "")),
                         completed=_as_int(obj.get("completed")),
                         total=_as_int(obj.get("total")),
                         # A failure after the stream starts arrives as an ``{"error": ...}`` line
                         # on HTTP 200, with no ``status``.
-                        error=str(error) if error else None,
+                        error=_reason_text(obj.get("error")),
                     )
 
 
-def _error_reason(resp: httpx.Response) -> str | None:
-    """The ``error`` string from an Ollama JSON error body, if there is one."""
-    try:
-        body = resp.json()
-    except ValueError:
+# A failure body is an engine's short JSON object. Anything larger is some proxy's page, and is not
+# read into memory; a reason longer than a paragraph is cut, so a caller can always show it.
+_MAX_ERROR_BODY_BYTES = 65_536
+_MAX_ERROR_REASON_CHARS = 2_000
+
+
+def _bounded_body(resp: httpx.Response) -> bytes | None:
+    """At most ``_MAX_ERROR_BODY_BYTES`` of a failure body; None when it is larger than that."""
+    body = b""
+    for chunk in resp.iter_bytes():
+        body += chunk
+        if len(body) > _MAX_ERROR_BODY_BYTES:
+            return None
+    return body
+
+
+def _error_reason(body: bytes | None) -> str | None:
+    """The ``error`` of an Ollama JSON error body, if it has a usable one."""
+    import json
+
+    if not body:
         return None
-    error = body.get("error") if isinstance(body, dict) else None
-    return str(error) if error else None
+    try:
+        parsed = json.loads(body)
+    except ValueError:  # malformed JSON, or bytes that are not text
+        return None
+    return _reason_text(parsed.get("error")) if isinstance(parsed, dict) else None
+
+
+def _reason_text(error: object) -> str | None:
+    """An engine-reported reason as bounded text; None when there is none."""
+    import json
+
+    if not error:
+        return None
+    text = error if isinstance(error, str) else json.dumps(error, ensure_ascii=False, default=str)
+    text = text.strip()
+    if len(text) > _MAX_ERROR_REASON_CHARS:
+        text = text[:_MAX_ERROR_REASON_CHARS] + "…"
+    return text or None
 
 
 def _as_int(value: object) -> int | None:

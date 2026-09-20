@@ -116,7 +116,12 @@ class PullEvent:
     error: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        # Callers forward this verbatim to their own clients, so an ordinary frame keeps the three
+        # keys it always had; only a failure frame carries ``error``.
+        data = asdict(self)
+        if self.error is None:
+            del data["error"]
+        return data
 
 
 class InferenceEngine(ABC):
