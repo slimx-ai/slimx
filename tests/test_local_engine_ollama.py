@@ -436,10 +436,18 @@ def test_a_failure_body_the_parser_cannot_read_still_raises_the_stock_error(monk
     import httpx
     import pytest
 
-    _pull_transport(monkeypatch, lambda request: httpx.Response(400, content=b"[" * 60_000))
+    from slimx.local.engines import ollama as engine_module
+
+    # Derived from the bound, not a constant of its own: a body larger than the bound would fail
+    # for the other reason (unread, so no reason), and this test would pass without ever reaching
+    # the parser.
+    depth = engine_module._MAX_ERROR_BODY_BYTES - 1
+    _pull_transport(monkeypatch, lambda request: httpx.Response(400, content=b"[" * depth))
     with pytest.raises(httpx.HTTPStatusError) as excinfo:
         list(OllamaEngine("http://ollama.test").pull_or_prepare_model("m"))
     assert "400" in str(excinfo.value) and "refused the pull" not in str(excinfo.value)
+    # It really is the parser that gave up, not the size bound.
+    assert engine_module._error_reason(b"[" * depth) is None
 
 
 def test_a_reason_is_reported_even_when_python_would_call_it_falsy(monkeypatch):
