@@ -141,7 +141,13 @@ class OllamaEngine(InferenceEngine):
                     # refuses a pull it cannot start (e.g. an invalid model name) with a JSON
                     # body; keep the exception type, but carry the engine's reason, since the
                     # stock message names only the status and a generic help link.
-                    reason = _error_reason(_bounded_body(resp))
+                    try:
+                        reason = _error_reason(_bounded_body(resp))
+                    except httpx.HTTPError:
+                        # The status is already known. An optional diagnostic read must not
+                        # replace it with a transport/decoding error or lose request/response.
+                        # Process-control exceptions are deliberately not caught here.
+                        reason = None
                     if reason:
                         raise httpx.HTTPStatusError(
                             f"Ollama refused the pull (HTTP {resp.status_code}): {reason}",
@@ -160,8 +166,9 @@ class OllamaEngine(InferenceEngine):
                     )
 
 
-# A failure body is an engine's short JSON object. Anything larger is some proxy's page, and is not
-# read into memory; a reason longer than a paragraph is cut, so a caller can always show it.
+# Failure diagnostics retain at most 64 KiB of an unencoded body. Encoded failures are declined
+# before consumption: httpx iter_bytes() can allocate an arbitrarily large decoded chunk before
+# yielding it. The transport can hand us one crossing raw chunk; it is never appended or decoded.
 # Reading it is bounded in SIZE, not in time: this client bounds only the connect phase, because a
 # pull's own stream takes minutes, so a peer that stalls mid-body stalls the call. That is the same
 # exposure the success path has always had, now also reachable on a failure.
@@ -170,16 +177,22 @@ _MAX_ERROR_REASON_CHARS = 2_000
 
 
 def _bounded_body(resp: httpx.Response) -> bytes | None:
-    """At most ``_MAX_ERROR_BODY_BYTES`` of a failure body; None when it is larger than that.
+    """Retain at most ``_MAX_ERROR_BODY_BYTES`` of identity-encoded diagnostic bytes.
 
-    Bounded in size only — see the note above the constants.
+    Encoded bodies are not consumed. Raw transport consumption may include one crossing chunk;
+    that chunk is not retained. Content-Length is not trusted. Size, not time, is bounded.
     """
-    body = b""
-    for chunk in resp.iter_bytes():
-        body += chunk
-        if len(body) > _MAX_ERROR_BODY_BYTES:
+    if resp.headers.get("content-encoding", "").strip().lower() not in ("", "identity"):
+        return None
+    body = bytearray()
+    # Cached responses (including fixture transports) may already have been consumed. A real
+    # streamed response uses iter_raw(), which never invokes a content decoder.
+    chunks = (resp.content,) if resp.is_stream_consumed else resp.iter_raw()
+    for chunk in chunks:
+        if len(chunk) > _MAX_ERROR_BODY_BYTES - len(body):
             return None
-    return body
+        body.extend(chunk)
+    return bytes(body)
 
 
 def _error_reason(body: bytes | None) -> str | None:

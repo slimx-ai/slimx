@@ -15,9 +15,15 @@
 - **`PullEvent.error`** (optional, `None` on every ordinary progress frame). Set, with
   `status == ""`, when the engine reports a failure mid-stream. `to_dict()` omits the key on
   ordinary frames, so existing progress framing is unchanged. It is unsanitized engine text,
-  bounded to 2,000 characters; a caller that shows it to a user owns what is safe to display.
+  bounded to 2,000 characters plus a truncation ellipsis; a caller that shows it to a user owns
+  safe presentation, including credentials whose recognizable shape was cut by that bound.
   A non-2xx refusal still raises `httpx.HTTPStatusError`, now with the engine's reason in its
-  message when the body has one. At most 64 KiB of a failure body is read.
+  message when an unencoded body has one. Diagnostic read/transport failures fall back to the
+  original status error and retain its request/response. Encoded failure bodies are declined
+  before consumption or decompression. At most 64 KiB of identity-encoded bytes are retained;
+  transport consumption may include one crossing raw chunk, which is not appended. Length
+  metadata is not trusted. Failure-body reads still have no read-time bound; successful
+  streaming and its pre-existing unbounded NDJSON line buffer are unchanged.
 
 ## v1.6.2 (2026-07-06)
 
