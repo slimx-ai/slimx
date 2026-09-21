@@ -110,9 +110,19 @@ class PullEvent:
     status: str
     completed: int | None = None
     total: int | None = None
+    # The engine's own failure reason, verbatim, when it reports one mid-stream (Ollama sends an
+    # ``{"error": ...}`` line on HTTP 200). ``None`` on every ordinary progress frame, and then
+    # ``to_dict()`` omits the key entirely, so an ordinary frame serializes as it always has. It is
+    # unsanitized engine text: a caller that shows it to a user owns what is safe to display.
+    error: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        # Callers forward this verbatim to their own clients, so an ordinary frame keeps the three
+        # keys it always had; only a failure frame carries ``error``.
+        data = asdict(self)
+        if self.error is None:
+            del data["error"]
+        return data
 
 
 class InferenceEngine(ABC):
