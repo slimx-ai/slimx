@@ -102,6 +102,7 @@ class OllamaProvider(Provider):
     ) -> Iterable[StreamEvent]:
         payload = _payload(req, stream=True, tools=tools)
         url = f"{self.base_url}/api/chat"
+        completion: Optional[Dict[str, Any]] = None
 
         try:
             with httpx.Client(timeout=_timeout(timeout)) as client:
@@ -111,25 +112,41 @@ class OllamaProvider(Provider):
                         raise ProviderError(f"Ollama error {response.status_code}: {body}")
 
                     for obj in iter_ndjson(response.iter_bytes()):
-                        message = obj.get("message") or {}
-                        chunk = message.get("content") or ""
-                        if chunk:
-                            yield StreamEvent(type="text_delta", text=chunk, raw=obj)
-                        for call in _parse_tool_calls(message.get("tool_calls") or []):
-                            yield StreamEvent.tool(call, raw=obj)
-
+                        yield from _stream_events(obj)
                         if obj.get("done") is True:
+                            completion = obj
                             break
 
         except httpx.TimeoutException as e:
             raise ProviderError(_timeout_message(req.model, url, streaming=True)) from e
 
-        yield StreamEvent(type="done")
+        yield StreamEvent.done(raw=completion)
 
 
 # --------------------------------------------------------------------------
 # Shared request/response mapping (also used by the async provider).
 # --------------------------------------------------------------------------
+
+def _stream_events(obj: Dict[str, Any]) -> List[StreamEvent]:
+    """The stream events one line of Ollama's ``/api/chat`` stream maps to.
+
+    Ollama reports a failure that happens after the response has started as a line of its own,
+    ``{"error": "..."}``, which becomes an ``error`` event. Its final line (``"done": true``,
+    with ``done_reason`` and the token counts) is the runtime's completion record: the stream's
+    ``done`` event carries it as ``raw``, and carries ``None`` when the stream ended without it.
+    """
+    error = obj.get("error")
+    if error:
+        return [StreamEvent.err(str(error), raw=obj)]
+    message = obj.get("message") or {}
+    events: List[StreamEvent] = []
+    chunk = message.get("content") or ""
+    if chunk:
+        events.append(StreamEvent.text_delta(chunk, raw=obj))
+    for call in _parse_tool_calls(message.get("tool_calls") or []):
+        events.append(StreamEvent.tool(call, raw=obj))
+    return events
+
 
 def _read_response_text(response: httpx.Response) -> str:
     try:
