@@ -201,6 +201,82 @@ def test_ollama_async_parses_tool_calls(monkeypatch):
     assert res.tool_calls[0].arguments == {"a": 1, "b": 1}
 
 
+_DONE_LINE = (
+    b'{"message":{"role":"assistant","content":""},"done":true,"done_reason":"stop",'
+    b'"prompt_eval_count":3,"eval_count":2}\n'
+)
+_STREAM_ENDINGS = {
+    # The runtime's final line arrives: the `done` event carries it as the completion record.
+    "completed": (
+        [b'{"message":{"content":"Hi"}}\n', _DONE_LINE],
+        ["text_delta", "done"],
+        {
+            "message": {"role": "assistant", "content": ""},
+            "done": True,
+            "done_reason": "stop",
+            "prompt_eval_count": 3,
+            "eval_count": 2,
+        },
+    ),
+    # Cut short: the stream still ends in one `done`, with no completion record.
+    "cut short": ([b'{"message":{"content":"Hi"}}\n'], ["text_delta", "done"], None),
+    # A failure after the response started is a line of its own, never silently dropped.
+    "runtime error": (
+        [b'{"message":{"content":"Hi"}}\n', b'{"error":"CUDA error: out of memory"}\n'],
+        ["text_delta", "error", "done"],
+        None,
+    ),
+}
+
+
+def _stream_sync(monkeypatch, chunks):
+    monkeypatch.setattr("slimx.providers.ollama.httpx.Client", _make_client(chunks, {}))
+    req = ChatRequest(model="m", messages=[Message.user("hi")])
+    return list(OllamaProvider("http://x").stream(req))
+
+
+def _stream_async(monkeypatch, chunks):
+    monkeypatch.setattr("slimx.providers.ollama_async.httpx.AsyncClient", _make_client(chunks, {}))
+    req = ChatRequest(model="m", messages=[Message.user("hi")])
+
+    async def collect():
+        return [event async for event in OllamaAsyncProvider("http://x").astream(req)]
+
+    return asyncio.run(collect())
+
+
+def test_ollama_stream_ends_with_the_runtime_completion_record_or_none(monkeypatch):
+    for collect in (_stream_sync, _stream_async):
+        for ending, (chunks, types, completion) in _STREAM_ENDINGS.items():
+            events = collect(monkeypatch, chunks)
+            assert [event.type for event in events] == types, (collect.__name__, ending)
+            assert events[-1].raw == completion, (collect.__name__, ending)
+            assert events[0].text == "Hi"
+
+
+def test_ollama_stream_reports_a_runtime_error_line_as_an_error_event(monkeypatch):
+    chunks = _STREAM_ENDINGS["runtime error"][0]
+    for collect in (_stream_sync, _stream_async):
+        error = [event for event in collect(monkeypatch, chunks) if event.type == "error"]
+        assert len(error) == 1, collect.__name__
+        assert error[0].error == "CUDA error: out of memory"
+        assert error[0].raw == {"error": "CUDA error: out of memory"}
+
+
+def test_ollama_stream_keeps_tool_calls_and_stops_at_the_final_line(monkeypatch):
+    chunks = [
+        b'{"message":{"tool_calls":[{"function":{"name":"add","arguments":{"a":1,"b":1}}}]}}\n',
+        _DONE_LINE,
+        b'{"message":{"content":"after the end"}}\n',
+    ]
+    for collect in (_stream_sync, _stream_async):
+        events = collect(monkeypatch, chunks)
+        assert [event.type for event in events] == ["tool_call", "done"], collect.__name__
+        call = events[0].tool_call
+        assert call is not None and call.arguments == {"a": 1, "b": 1}
+        assert events[-1].raw["done_reason"] == "stop"
+
+
 def test_ollama_capabilities_now_advertise_tools_and_json():
     from slimx.providers import describe_provider
 

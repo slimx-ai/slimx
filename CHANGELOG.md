@@ -1,9 +1,14 @@
 # Changelog
 
-## Unreleased
+## v1.7.0 (2026-11-16)
 
 ### Fixed
 
+- **An Ollama stream no longer drops a runtime error.** Ollama reports a failure that happens
+  after a streamed response has started as an `{"error": ...}` NDJSON line.
+  `OllamaProvider.stream()` and `OllamaAsyncProvider.astream()` skipped that line, so a stream
+  that failed part-way ended like one that completed. The line now becomes an `error` event
+  carrying the runtime's text, and the stream still ends in exactly one `done` event.
 - **`OllamaEngine.pull_or_prepare_model` keeps the engine's failure reason.** A pull that
   Ollama refuses reports why in one of two shapes, and both were discarded: an unknown tag
   fails on HTTP 200 with an `{"error": ...}` NDJSON line, which became an empty-status
@@ -12,6 +17,12 @@
 
 ### Added
 
+- **The `done` event of an Ollama stream carries the runtime's completion record.** Ollama ends
+  a stream with a final line (`"done": true`, with `done_reason` and the token counts), and
+  `chat()` already returns that line as `Result.raw`. The stream's `done` event now carries it as
+  `raw` too. A stream that ended without it, because the connection closed or the runtime failed,
+  ends with a `done` event whose `raw` is `None`, so a caller can tell a completed stream from a
+  cut-short one. Sync and async streams share one line mapper.
 - **`PullEvent.error`** (optional, `None` on every ordinary progress frame). Set, with
   `status == ""`, when the engine reports a failure mid-stream. `to_dict()` omits the key on
   ordinary frames, so existing progress framing is unchanged. It is unsanitized engine text,

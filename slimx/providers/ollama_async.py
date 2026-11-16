@@ -3,14 +3,14 @@
 import os
 
 import httpx
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 from ..errors import ProviderError
 from ..tooling import ToolSpec
 from ..types import InspectedRequest, Result, StreamEvent, Usage
 from ..utils.ndjson import aiter_ndjson
 from .base import Provider, ProviderCapabilities
-from .ollama import _parse_tool_calls, _payload, _timeout, _timeout_message
+from .ollama import _parse_tool_calls, _payload, _stream_events, _timeout, _timeout_message
 
 
 class OllamaAsyncProvider(Provider):
@@ -92,6 +92,7 @@ class OllamaAsyncProvider(Provider):
     async def astream(self, req, *, tools: Sequence[ToolSpec] = (), timeout=None):
         payload = _payload(req, stream=True, tools=tools)
         url = f"{self.base_url}/api/chat"
+        completion: Optional[Dict[str, Any]] = None
 
         try:
             async with httpx.AsyncClient(timeout=_timeout(timeout)) as client:
@@ -101,20 +102,16 @@ class OllamaAsyncProvider(Provider):
                         raise ProviderError(f"Ollama error {response.status_code}: {body}")
 
                     async for obj in aiter_ndjson(response.aiter_bytes()):
-                        message = obj.get("message") or {}
-                        chunk = message.get("content") or ""
-                        if chunk:
-                            yield StreamEvent(type="text_delta", text=chunk, raw=obj)
-                        for call in _parse_tool_calls(message.get("tool_calls") or []):
-                            yield StreamEvent.tool(call, raw=obj)
-
+                        for event in _stream_events(obj):
+                            yield event
                         if obj.get("done") is True:
+                            completion = obj
                             break
 
         except httpx.TimeoutException as e:
             raise ProviderError(_timeout_message(req.model, url, streaming=True)) from e
 
-        yield StreamEvent(type="done")
+        yield StreamEvent.done(raw=completion)
 
 
 async def _aread_response_text(response: httpx.Response) -> str:
