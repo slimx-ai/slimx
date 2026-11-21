@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import Any, Dict, Iterable, Mapping, Optional, Sequence, Union
 
 from ..messages import Message
@@ -73,6 +74,34 @@ def _image_request(model: str, prompt: str, overrides: Dict[str, Any]) -> ImageR
     return ImageRequest(model=model, prompt=prompt, n=n, size=size, extra=overrides or None)
 
 
+def chat_completion_options(provider: str, options: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+    """Validate explicit Chat Completions body options separately from connection settings."""
+    if options is None:
+        return {}
+    if not isinstance(options, Mapping) or set(options) - {"thinking", "reasoning_effort", "stop", "response_format"}:
+        raise ValueError("Unsupported chat completion option")
+    if options and provider not in {"oai", "openai"}:
+        raise ValueError("Chat completion options require an OpenAI-compatible transport")
+    # The direct OpenAI transport has no thinking body member. Compatible servers may support it.
+    thinking = options.get("thinking")
+    if "thinking" in options and (provider != "oai" or not isinstance(thinking, dict)
+            or set(thinking) != {"type"} or thinking["type"] not in ("enabled", "disabled")):
+        raise ValueError("thinking requires an oai completion and type enabled or disabled")
+    if "reasoning_effort" in options and options["reasoning_effort"] not in (
+        "none", "minimal", "low", "medium", "high", "xhigh", "max"
+    ):
+        raise ValueError("Invalid reasoning_effort")
+    if "response_format" in options and options["response_format"] not in (
+        {"type": "text"}, {"type": "json_object"}
+    ):
+        raise ValueError("Invalid chat completion response_format")
+    if "stop" in options:
+        stops = options["stop"] if isinstance(options["stop"], list) else [options["stop"]]
+        if not 1 <= len(stops) <= 16 or not all(isinstance(stop, str) and 0 < len(stop.encode()) <= 512 for stop in stops):
+            raise ValueError("Invalid chat completion stop sequences")
+    return deepcopy(dict(options))
+
+
 def _chat_request(
     model: str,
     prompt: "PromptInput",
@@ -80,6 +109,7 @@ def _chat_request(
     *,
     temperature: Optional[float],
     max_tokens: Optional[int],
+    completion_options: Dict[str, Any],
 ) -> ChatRequest:
     """Build a ChatRequest, threading the hosted-image-tool fields from overrides.
 
@@ -89,11 +119,14 @@ def _chat_request(
     forces a tool. Pulling them here lets ``__call__`` / ``stream`` / ``inspect``
     all gain image generation without each growing positional parameters.
     """
+    if completion_options and overrides.get("image_generation") is not None:
+        raise ValueError("Chat Completions options are unavailable on the Responses image endpoint")
     return ChatRequest(
         model=model,
         messages=_messages_from(prompt, overrides),
         temperature=overrides.get("temperature", temperature),
         max_tokens=overrides.get("max_tokens", max_tokens),
+        extra=completion_options or None,
         image_generation=overrides.get("image_generation"),
         previous_response_id=overrides.get("previous_response_id"),
         tool_choice=overrides.get("tool_choice"),
@@ -171,8 +204,10 @@ class Model:
         retries: int = 2,
         provider_kwargs: Optional[Dict[str, Any]] = None,
         hooks: Optional[Mapping[str, Any]] = None,
+        completion_options: Optional[Mapping[str, Any]] = None,
     ):
         provider_name, model_name = _parse_model(model)
+        self._completion_options = chat_completion_options(provider_name, completion_options)
         provider = get_provider(provider_name, async_mode=False, **(provider_kwargs or {}))
         self._client = Client(provider, timeout=timeout, retries=retries, hooks=hooks)
         self._model = model_name
@@ -191,6 +226,7 @@ class Model:
         req = _chat_request(
             self._model, prompt, overrides,
             temperature=self._temperature, max_tokens=self._max_tokens,
+            completion_options=self._completion_options,
         )
         return self._client.inspect(req, tools=self._tools, stream=stream)
 
@@ -198,6 +234,7 @@ class Model:
         req = _chat_request(
             self._model, prompt, overrides,
             temperature=self._temperature, max_tokens=self._max_tokens,
+            completion_options=self._completion_options,
         )
         return self._client.chat(req, tools=self._tools, tool_runtime=self._tool_runtime)
 
@@ -205,6 +242,7 @@ class Model:
         req = _chat_request(
             self._model, prompt, overrides,
             temperature=self._temperature, max_tokens=self._max_tokens,
+            completion_options=self._completion_options,
         )
         return self._client.stream(req, tools=self._tools)
 
@@ -218,6 +256,7 @@ class Model:
                 temperature=overrides.get("temperature", self._temperature),
                 max_tokens=overrides.get("max_tokens", self._max_tokens),
                 response_format="json_object",
+                extra={k: v for k, v in self._completion_options.items() if k != "response_format"} or None,
             )
             res = self._client.chat(req, tools=self._tools, tool_runtime=self._tool_runtime)
             try:
@@ -271,8 +310,10 @@ class AsyncModel:
         retries: int = 2,
         provider_kwargs: Optional[Dict[str, Any]] = None,
         hooks: Optional[Mapping[str, Any]] = None,
+        completion_options: Optional[Mapping[str, Any]] = None,
     ):
         provider_name, model_name = _parse_model(model)
+        self._completion_options = chat_completion_options(provider_name, completion_options)
         provider = get_provider(provider_name, async_mode=True, **(provider_kwargs or {}))
         self._client = Client(provider, timeout=timeout, retries=retries, hooks=hooks)
         self._model = model_name
@@ -291,6 +332,7 @@ class AsyncModel:
         req = _chat_request(
             self._model, prompt, overrides,
             temperature=self._temperature, max_tokens=self._max_tokens,
+            completion_options=self._completion_options,
         )
         return self._client.inspect(req, tools=self._tools, stream=stream)
 
@@ -298,6 +340,7 @@ class AsyncModel:
         req = _chat_request(
             self._model, prompt, overrides,
             temperature=self._temperature, max_tokens=self._max_tokens,
+            completion_options=self._completion_options,
         )
         return await self._client.achat(req, tools=self._tools, tool_runtime=self._tool_runtime)
 
@@ -305,6 +348,7 @@ class AsyncModel:
         req = _chat_request(
             self._model, prompt, overrides,
             temperature=self._temperature, max_tokens=self._max_tokens,
+            completion_options=self._completion_options,
         )
         async for ev in self._client.astream(req, tools=self._tools):
             yield ev
@@ -319,6 +363,7 @@ class AsyncModel:
                 temperature=overrides.get("temperature", self._temperature),
                 max_tokens=overrides.get("max_tokens", self._max_tokens),
                 response_format="json_object",
+                extra={k: v for k, v in self._completion_options.items() if k != "response_format"} or None,
             )
             res = await self._client.achat(req, tools=self._tools, tool_runtime=self._tool_runtime)
             try:

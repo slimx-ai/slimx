@@ -90,8 +90,22 @@ def parse_image_response(data: Dict[str, Any]) -> Result:
 
 
 def parse_chat_response(data: Dict[str, Any]) -> Result:
-    msg = data["choices"][0]["message"]
-    text = msg.get("content") or ""
+    choice = data["choices"][0]
+    msg = choice["message"]
+    content = msg.get("content")
+    text = content if isinstance(content, str) else ""
+    if isinstance(content, list):
+        parts = []
+        for part in content:
+            if not isinstance(part, dict):
+                break
+            if part.get("type") in {"reasoning", "thinking", "refusal"}:
+                continue
+            if part.get("type") not in {"text", "output_text"} or not isinstance(part.get("text"), str):
+                break
+            parts.append(part["text"])
+        else:
+            text = "".join(parts)
     tool_calls: List[ToolCall] = []
     for tc in msg.get("tool_calls") or []:
         fn = tc.get("function") or {}
@@ -102,7 +116,10 @@ def parse_chat_response(data: Dict[str, Any]) -> Result:
             args_obj = {}
         tool_calls.append(ToolCall(id=tc.get("id", ""), name=fn.get("name", ""), arguments=args_obj))
     usage = Usage.from_openai(data.get("usage") or {})
-    return Result(text=text, raw=data, usage=usage, tool_calls=tool_calls)
+    reason = choice.get("finish_reason")
+    known_reasons = ("stop", "length", "tool_calls", "function_call", "content_filter", "insufficient_system_resource")
+    return Result(text=text, raw=data, usage=usage, tool_calls=tool_calls,
+                  finish_reason=reason if reason in known_reasons else None)
 
 
 class StreamToolAccumulator:

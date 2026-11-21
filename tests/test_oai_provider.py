@@ -134,3 +134,77 @@ def test_oai_chat_uses_openai_compatible_chat_completions_payload(monkeypatch):
     assert captured["json"]["messages"][0]["content"] == "Hello"
     assert captured["json"]["temperature"] == 0.2
     assert captured["json"]["max_tokens"] == 64
+
+
+@pytest.mark.parametrize("contents,final", [
+    ([{"type": "text", "text": "  let x"}, {"type": "reasoning", "text": "private"},
+      {"type": "output_text", "text": " = 1;\n"}], "  let x = 1;\n"),
+    ("", ""), ([{"type": "unrecognized", "text": "never code"}], ""),
+    # Do not present only a prefix of a file as though the whole response were understood.
+    ([{"type": "text", "text": "partial"}, {"type": "unknown"}], ""),
+])
+def test_file_generation_options_and_final_content(monkeypatch, contents, final):
+    import httpx
+    from slimx import llm
+
+    bodies = []
+    def send(client, url, *, headers, json):
+        bodies.append(json)
+        return httpx.Response(200, json={"choices": [{"finish_reason": "length",
+            "message": {"content": contents, "reasoning_content": "private"}}]})
+    monkeypatch.setattr(httpx.Client, "post", send)
+    options = {"thinking": {"type": "disabled"}, "response_format": {"type": "text"}}
+    model = llm("oai:fixture", max_tokens=64, retries=0,
+                provider_kwargs={"base_url": "https://fixture.example", "api_key": "fixture"},
+                completion_options=options)
+    reply = model("Generate a file")
+    assert reply.text == final
+    assert len(bodies) == 1
+    assert bodies[0] == model.inspect("Generate a file").payload
+    assert all(bodies[0][key] == value for key, value in options.items())
+    assert bodies[0]["max_tokens"] == 64
+
+
+def test_structured_completion_keeps_json_and_validates_options(monkeypatch):
+    import httpx
+    from slimx import llm
+
+    def send(client, url, *, headers, json):
+        assert json["response_format"] == {"type": "json_object"}
+        assert json["reasoning_effort"] == "low"
+        return httpx.Response(200, json={"choices": [{"message": {"content": "{}"}}]})
+    monkeypatch.setattr(httpx.Client, "post", send)
+    model = llm("oai:fixture", provider_kwargs={"base_url": "https://fixture.example"},
+                completion_options={"response_format": {"type": "text"}, "reasoning_effort": "low"})
+    assert model.json("JSON", schema={"type": "object"}).data == {}
+    for provider, options in [("ollama", {"thinking": {"type": "disabled"}}),
+                              ("oai", {"thinking": {"type": "off"}}),
+                              ("openai", {"thinking": {"type": "disabled"}}),
+                              ("oai", {"stop": [""]}), ("oai", {"stop": ["x" * 513]}),
+                              ("oai", {"reasoning_effort": "unknown"}),
+                              ("oai", {"response_format": {"type": "other"}}),
+                              ("oai", {"messages": []})]:
+        with pytest.raises(ValueError):
+            llm(f"{provider}:fixture", completion_options=options)
+
+
+def test_async_structured_serialization_and_finish_reason(monkeypatch):
+    import asyncio
+    import httpx
+    from slimx.high.api import allm
+
+    options = {"thinking": {"type": "disabled"}, "response_format": {"type": "text"}}
+
+    async def send(client, url, *, headers, json):
+        assert json["thinking"] == {"type": "disabled"}
+        assert json["response_format"] == {"type": "json_object"}
+        return httpx.Response(200, json={"choices": [{
+            "finish_reason": "stop", "message": {"content": "{}", "reasoning_content": "private"}
+        }]})
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", send)
+    model = allm("oai:fixture", retries=0, provider_kwargs={"base_url": "https://fixture.example"},
+                 completion_options=options)
+    options["thinking"]["type"] = "mutated"
+    result = asyncio.run(model.json("JSON", schema={"type": "object"}))
+    assert result.data == {} and result.text == "{}" and result.finish_reason == "stop"
