@@ -91,7 +91,20 @@ def parse_image_response(data: Dict[str, Any]) -> Result:
 
 def parse_chat_response(data: Dict[str, Any]) -> Result:
     msg = data["choices"][0]["message"]
-    text = msg.get("content") or ""
+    content = msg.get("content")
+    text = content if isinstance(content, str) else ""
+    if isinstance(content, list):
+        parts = []
+        for part in content:
+            if not isinstance(part, dict):
+                break
+            if part.get("type") in {"reasoning", "thinking", "refusal"}:
+                continue
+            if part.get("type") not in {"text", "output_text"} or not isinstance(part.get("text"), str):
+                break
+            parts.append(part["text"])
+        else:
+            text = "".join(parts)
     tool_calls: List[ToolCall] = []
     for tc in msg.get("tool_calls") or []:
         fn = tc.get("function") or {}
