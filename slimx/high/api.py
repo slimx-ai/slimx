@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import Any, Dict, Iterable, Mapping, Optional, Sequence, Union
 
 from ..messages import Message
@@ -81,6 +82,7 @@ def chat_completion_options(provider: str, options: Optional[Mapping[str, Any]])
         raise ValueError("Unsupported chat completion option")
     if options and provider not in {"oai", "openai"}:
         raise ValueError("Chat completion options require an OpenAI-compatible transport")
+    # The direct OpenAI transport has no thinking body member. Compatible servers may support it.
     thinking = options.get("thinking")
     if "thinking" in options and (provider != "oai" or not isinstance(thinking, dict)
             or set(thinking) != {"type"} or thinking["type"] not in ("enabled", "disabled")):
@@ -97,7 +99,7 @@ def chat_completion_options(provider: str, options: Optional[Mapping[str, Any]])
         stops = options["stop"] if isinstance(options["stop"], list) else [options["stop"]]
         if not 1 <= len(stops) <= 16 or not all(isinstance(stop, str) and 0 < len(stop.encode()) <= 512 for stop in stops):
             raise ValueError("Invalid chat completion stop sequences")
-    return dict(options)
+    return deepcopy(dict(options))
 
 
 def _chat_request(

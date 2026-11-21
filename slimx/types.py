@@ -316,6 +316,8 @@ class Result:
     # A compact snapshot of the originating request, attached by the Client so a
     # Result is self-describing (used by `to_record()`). None for raw provider calls.
     request: Optional[Dict[str, Any]] = None
+    # Known provider finish reason, when available on a non-streaming response.
+    finish_reason: Optional[str] = None
 
     @property
     def parsed(self) -> Any:

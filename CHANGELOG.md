@@ -3,7 +3,7 @@
 ## v1.7.1 (unreleased)
 
 - OpenAI-compatible chat completions support explicit, validated `completion_options` for thinking, reasoning effort, stop sequences and response format. Structured calls always request JSON.
-- Final text parts preserve whitespace on non-streaming chat completions. Reasoning and refusal parts are excluded from the final text.
+- Final text parts preserve whitespace on non-streaming chat completions. Reasoning and refusal parts are excluded from the final text. Unknown mixed content fails closed. Known non-streaming OpenAI-compatible finish reasons are available on the result.
 
 ## v1.7.0 (2026-11-16)
 

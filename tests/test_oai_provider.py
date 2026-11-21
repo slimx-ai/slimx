@@ -140,6 +140,8 @@ def test_oai_chat_uses_openai_compatible_chat_completions_payload(monkeypatch):
     ([{"type": "text", "text": "  let x"}, {"type": "reasoning", "text": "private"},
       {"type": "output_text", "text": " = 1;\n"}], "  let x = 1;\n"),
     ("", ""), ([{"type": "unrecognized", "text": "never code"}], ""),
+    # Do not present only a prefix of a file as though the whole response were understood.
+    ([{"type": "text", "text": "partial"}, {"type": "unknown"}], ""),
 ])
 def test_file_generation_options_and_final_content(monkeypatch, contents, final):
     import httpx
@@ -177,6 +179,32 @@ def test_structured_completion_keeps_json_and_validates_options(monkeypatch):
     assert model.json("JSON", schema={"type": "object"}).data == {}
     for provider, options in [("ollama", {"thinking": {"type": "disabled"}}),
                               ("oai", {"thinking": {"type": "off"}}),
+                              ("openai", {"thinking": {"type": "disabled"}}),
+                              ("oai", {"stop": [""]}), ("oai", {"stop": ["x" * 513]}),
+                              ("oai", {"reasoning_effort": "unknown"}),
+                              ("oai", {"response_format": {"type": "other"}}),
                               ("oai", {"messages": []})]:
         with pytest.raises(ValueError):
             llm(f"{provider}:fixture", completion_options=options)
+
+
+def test_async_structured_serialization_and_finish_reason(monkeypatch):
+    import asyncio
+    import httpx
+    from slimx.high.api import allm
+
+    options = {"thinking": {"type": "disabled"}, "response_format": {"type": "text"}}
+
+    async def send(client, url, *, headers, json):
+        assert json["thinking"] == {"type": "disabled"}
+        assert json["response_format"] == {"type": "json_object"}
+        return httpx.Response(200, json={"choices": [{
+            "finish_reason": "stop", "message": {"content": "{}", "reasoning_content": "private"}
+        }]})
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", send)
+    model = allm("oai:fixture", retries=0, provider_kwargs={"base_url": "https://fixture.example"},
+                 completion_options=options)
+    options["thinking"]["type"] = "mutated"
+    result = asyncio.run(model.json("JSON", schema={"type": "object"}))
+    assert result.data == {} and result.text == "{}" and result.finish_reason == "stop"
