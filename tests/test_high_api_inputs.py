@@ -38,10 +38,10 @@ def test_json_prepends_system_to_message_list():
     # json() is sync and builds the request before any network call; inspect the
     # schema-priming system message is prepended ahead of the supplied history.
     # We assert via the message construction helper rather than a live call.
-    from slimx.high.api import _json_system_prompt, _messages_from, _json_schema_parts
+    from slimx.high.api import json_system_prompt, _messages_from, _json_schema_parts
 
     schema_dict, _ = _json_schema_parts(Out)
-    msgs = [Message.system(_json_system_prompt(schema_dict))] + _messages_from(list(history), {})
+    msgs = [Message.system(json_system_prompt(schema_dict))] + _messages_from(list(history), {})
     assert msgs[0].role == "system"
     assert [m.role for m in msgs[1:]] == ["user", "assistant", "user"]
 

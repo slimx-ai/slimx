@@ -69,6 +69,8 @@ class OllamaProvider(Provider):
                         raise ProviderError(f"Ollama error {response.status_code}: {body}")
 
                     for obj in iter_ndjson(response.iter_bytes()):
+                        if obj.get("error"):
+                            raise ProviderError(f"Ollama error: {obj['error']}")
                         data = obj
                         message = obj.get("message") or {}
                         chunk = message.get("content") or ""
@@ -288,7 +290,9 @@ def _payload(req, *, stream: bool, tools: Sequence[ToolSpec] = ()) -> Dict[str, 
         if isinstance(extra_options, dict):
             options.update(extra_options)
         # Explicit `format`/`keep_alive` in extra win over the JSON-mode default.
-        for key in ("format", "keep_alive"):
+        if "num_ctx" in req.extra:
+            options["num_ctx"] = req.extra["num_ctx"]
+        for key in ("format", "keep_alive", "truncate", "shift"):
             if key in req.extra:
                 payload[key] = req.extra[key]
 

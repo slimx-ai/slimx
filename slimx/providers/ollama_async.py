@@ -65,6 +65,8 @@ class OllamaAsyncProvider(Provider):
                         raise ProviderError(f"Ollama error {response.status_code}: {body}")
 
                     async for obj in aiter_ndjson(response.aiter_bytes()):
+                        if obj.get("error"):
+                            raise ProviderError(f"Ollama error: {obj['error']}")
                         data = obj
                         message = obj.get("message") or {}
                         chunk = message.get("content") or ""
