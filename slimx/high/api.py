@@ -25,7 +25,8 @@ def _json_schema_parts(schema: Any):
     return schema_for(schema), schema
 
 
-def _json_system_prompt(schema_dict: Any) -> str:
+def json_system_prompt(schema_dict: Any) -> str:
+    """The actual system message used by json(), available for request sizing."""
     return "Return ONLY valid JSON (no markdown). Match this JSON Schema exactly: " + str(schema_dict)
 
 
@@ -78,6 +79,14 @@ def chat_completion_options(provider: str, options: Optional[Mapping[str, Any]])
     """Validate explicit Chat Completions body options separately from connection settings."""
     if options is None:
         return {}
+    if provider == "ollama" and isinstance(options, Mapping):
+        if set(options) - {"num_ctx", "truncate", "shift"}:
+            raise ValueError("Unsupported Ollama completion option")
+        if "num_ctx" in options and (type(options["num_ctx"]) is not int or options["num_ctx"] < 1):
+            raise ValueError("num_ctx must be a positive integer")
+        if any(type(options[key]) is not bool for key in ("truncate", "shift") if key in options):
+            raise ValueError("truncate and shift must be booleans")
+        return dict(options)
     if not isinstance(options, Mapping) or set(options) - {"thinking", "reasoning_effort", "stop", "response_format"}:
         raise ValueError("Unsupported chat completion option")
     if options and provider not in {"oai", "openai"}:
@@ -248,7 +257,7 @@ class Model:
 
     def json(self, prompt: PromptInput, *, schema: Any, repair: int = 0, **overrides: Any) -> Result:
         schema_dict, schema_type = _json_schema_parts(schema)
-        messages = [Message.system(_json_system_prompt(schema_dict))] + _messages_from(prompt, overrides)
+        messages = [Message.system(json_system_prompt(schema_dict))] + _messages_from(prompt, overrides)
         for attempt in range(repair + 1):
             req = ChatRequest(
                 model=self._model,
@@ -355,7 +364,7 @@ class AsyncModel:
 
     async def json(self, prompt: PromptInput, *, schema: Any, repair: int = 0, **overrides: Any) -> Result:
         schema_dict, schema_type = _json_schema_parts(schema)
-        messages = [Message.system(_json_system_prompt(schema_dict))] + _messages_from(prompt, overrides)
+        messages = [Message.system(json_system_prompt(schema_dict))] + _messages_from(prompt, overrides)
         for attempt in range(repair + 1):
             req = ChatRequest(
                 model=self._model,

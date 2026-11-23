@@ -283,3 +283,39 @@ def test_ollama_capabilities_now_advertise_tools_and_json():
     info = describe_provider("ollama")
     assert info["tools"] is True
     assert info["structured_output"] is True
+
+
+def test_model_request_context_reaches_every_ollama_http_body():
+    import json
+    import httpx
+    from slimx import llm, allm
+    from tests.conformance.contract import transport_installed
+
+    bodies = []
+
+    def respond(request):
+        body = json.loads(request.content)
+        bodies.append(body)
+        text = '{}' if len(body["messages"]) > 2 else 'first proposal'
+        frame = {"message": {"content": text}, "done": True, "done_reason": "stop"}
+        return httpx.Response(200, content=json.dumps(frame).encode() + b'\n')
+
+    options = {"num_ctx": 16384, "truncate": False, "shift": False}
+    kwargs = {"completion_options": options, "max_tokens": 4096, "retries": 0}
+
+    async def exercise_async():
+        model = allm("ollama:test", **kwargs)
+        await model("chat")
+        _ = [event async for event in model.astream("stream")]
+        await model.json("plan", schema={"type": "object"}, repair=1)
+
+    with transport_installed(httpx.MockTransport(respond)):
+        model = llm("ollama:test", **kwargs)
+        model("chat")
+        list(model.stream("stream"))
+        model.json("plan", schema={"type": "object"}, repair=1)
+        asyncio.run(exercise_async())
+    assert len(bodies) == 8
+    for body in bodies:
+        assert body["options"] == {"num_ctx": 16384, "num_predict": 4096}
+        assert body["truncate"] is False and body["shift"] is False

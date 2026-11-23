@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.7.2 (unreleased)
+
+- Ollama supports bounded per-call context through model completion options `num_ctx`, `truncate` and `shift` across chat, streaming and structured repairs. Sync and async chat propagate runtime error frames. `json_system_prompt` exposes the structured system message for input accounting.
+
 ## v1.7.1 (unreleased)
 
 - OpenAI-compatible chat completions support explicit, validated `completion_options` for thinking, reasoning effort, stop sequences and response format. Structured calls always request JSON.
